@@ -132,7 +132,7 @@ class RunConfig:
     # ── Plan gate (docs/07 §2, Phase 4) ────────────────────────────────────────
     # A default, not a wall: the planner may still propose fewer, and a user can add
     # more at the gate. 6 reproduces today's hardcoded PlannerOutput cap exactly.
-    max_planner_tasks: int = 6
+    max_planner_tasks: int = 30
     # True here, not False — this is the bare *engine* default read by every test,
     # the CLI, and the eval harness that has never heard of this field and has no
     # way to render or resume a second interrupt. A host that forgets to wire this

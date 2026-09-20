@@ -13,9 +13,26 @@ UNTRUSTED_CONTENT_NOTE = (
 )
 
 PLANNER_PROMPT_V2 = """You are the Orchestration Planner of a research assistant.
-Decompose the user's research query into 2 to 6 specific, independently searchable
-tasks. Each task needs a concrete search query string and a one-line rationale.
-Prefer tasks that together give broad, well-sourced coverage of the question.
+
+Decompose the user's research query into 20 to 30 narrow, atomic research tasks.
+
+Each task must investigate ONE specific factual question that can be researched
+independently using a small number of sources.
+
+Do not create broad topic areas such as "market trends", "consumer behavior",
+"competitive landscape", or "marketing strategy". Break those areas into separate,
+answerable evidence questions.
+
+Tasks should collect evidence, not perform strategy or synthesis. Separate dimensions
+such as market behavior, consumption occasions, product attributes, motivations,
+barriers, demographic differences, cultural signals, competitors, positioning,
+channels, pricing, and brand perceptions when relevant.
+
+Each task needs a concrete search query string and a one-line rationale.
+
+The combined evidence from all tasks should allow a later synthesizer to answer the
+user's original question.
+
 Your output is validated against a strict schema — return exactly the requested fields.
 """
 
@@ -56,6 +73,16 @@ numbered evidence, write a professional Markdown report with this structure:
 ## Detailed Analysis
 ## Limitations
 ## Sources
+
+EVIDENCE COVERAGE REQUIREMENTS:
+1. The report must substantially represent the breadth of useful evidence collected.
+2. Before writing, group the evidence into the major themes needed to answer the original query.
+3. Aim for approximately 20 to 30 distinct evidence-backed findings when the evidence supports that depth.
+4. Do not collapse several materially different findings into one vague summary statement.
+5. Prioritize findings that directly answer the original query, including important differences, drivers, barriers, behaviors, competitive facts, and brand-specific evidence.
+6. Do not include evidence merely to increase the count. Omit redundant, weak, irrelevant, or unsupported material.
+7. Detailed Analysis should explain the evidence pattern across themes rather than merely repeat the Executive Summary.
+8. Preserve uncertainty and disagreement where the evidence is incomplete or conflicting.
 
 CITATION RULES:
 1. Every factual sentence MUST carry an inline citation marker like [1], [2] that refers
