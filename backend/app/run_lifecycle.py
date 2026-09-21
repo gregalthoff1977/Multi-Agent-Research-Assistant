@@ -275,13 +275,13 @@ async def record_evidence(
     sources_by_url: dict[str, uuid.UUID] = {}
     evidence_by_index: dict[int, uuid.UUID] = {}
     evidence_by_quote: dict[tuple[uuid.UUID, str], list[uuid.UUID]] = {}
-    watermark = 0
 
     base = (
         await db.execute(
             select(func.coalesce(func.max(Evidence.sequence), 0)).where(Evidence.run_id == run.id)
         )
     ).scalar_one()
+    watermark = base
 
     for offset, item in enumerate(evidence, start=1):
         if not isinstance(item, dict):
@@ -327,6 +327,36 @@ async def record_evidence(
         sources_by_url[norm] = source_id
 
         snippet = item.get("snippet") or ""
+
+        # Rework replays the checkpoint, which contains the evidence already persisted
+        # by the original run. Reuse an existing row with the same source, task, and
+        # snippet rather than inserting the same evidence again on every revision.
+        task_id = str(item["task_id"]) if item.get("task_id") is not None else None
+        existing_eid = (
+            await db.execute(
+                select(Evidence.id)
+                .where(
+                    Evidence.run_id == run.id,
+                    Evidence.source_id == source_id,
+                    Evidence.task_id == task_id,
+                    Evidence.content_hash == content_hash(snippet),
+                    Evidence.snippet == snippet,
+                )
+                .order_by(Evidence.sequence)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+        idx = index_by_url.get(norm)
+
+        if existing_eid is not None:
+            if idx is not None and idx not in evidence_by_index:
+                evidence_by_index[idx] = existing_eid
+            evidence_by_quote.setdefault(
+                (source_id, snippet.strip()[:500]), []
+            ).append(existing_eid)
+            continue
+
         sequence = base + offset
 
         # The graph's per-item verdict, read rather than re-derived — see
@@ -363,7 +393,7 @@ async def record_evidence(
                 run_id=run.id,
                 source_id=source_id,
                 sequence=sequence,
-                task_id=str(item["task_id"]) if item.get("task_id") is not None else None,
+                task_id=task_id,
                 snippet=snippet,
                 content_hash=content_hash(snippet),
                 key_fact=item.get("key_fact") or None,
