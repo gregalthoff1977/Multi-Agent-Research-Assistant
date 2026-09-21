@@ -205,6 +205,10 @@ def test_short_number_is_not_grounded_by_a_longer_one():
     """'5' must not be backed by '50%' — word-bounded matching only."""
     assert graph_mod._numbers_grounded("grew 5% [1].", "- Solar grew 50%") is False
     assert graph_mod._numbers_grounded("grew 50% [1].", "- Solar grew 50%") is True
+    assert graph_mod._numbers_grounded(
+        "The market was estimated at $312.0 million in 2024 [1].",
+        "- The market was estimated at 312.0 USD Million in 2024.",
+    ) is True
 
 
 @pytest.mark.asyncio

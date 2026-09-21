@@ -1219,7 +1219,8 @@ def _numbers_grounded(claim: str, snippets: str) -> bool:
     # Word-bounded containment: "5" must not be grounded by "50%", or every short
     # number would false-positive and the check would pass nothing.
     return all(
-        re.search(rf"(?<![0-9.]){re.escape(n)}(?![0-9.])", snippets) for n in _claim_numbers(claim)
+        re.search(rf"(?<![0-9.]){re.escape(n)}(?![0-9]|\\.\\d)", snippets)
+        for n in _claim_numbers(claim)
     )
 
 
@@ -1373,6 +1374,14 @@ async def _verify_citation_fidelity(
         # not contain verbatim can never be "supported", whatever a small local verifier
         # says (it rubber-stamped invented figures in the second Ollama eval).
         if not _numbers_grounded(claim, snippets):
+            logger.warning(
+                "citation_verify_number_mismatch",
+                session_id=sid,
+                claim=claim,
+                citations=nums,
+                claim_numbers=_claim_numbers(claim),
+                snippet_preview=snippets[:1000],
+            )
             mechanically_unsupported.add(claim)
         claim_evidence.append((claim, snippets))
 
@@ -1388,8 +1397,15 @@ async def _verify_citation_fidelity(
 
     ok_by_claim: dict[str, bool] = {}
     if verdicts:  # empty on verifier failure — nothing was ruled, nothing is stripped
-        for (claim, _), ok in zip(todo, verdicts, strict=True):
+        for (claim, snippets), ok in zip(todo, verdicts, strict=True):
             ok_by_claim[claim] = ok
+            if not ok:
+                logger.warning(
+                    "citation_verify_critic_rejected",
+                    session_id=sid,
+                    claim=claim,
+                    snippet_preview=snippets[:1000],
+                )
 
     result = draft
     stripped = 0
