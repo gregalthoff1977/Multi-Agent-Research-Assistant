@@ -237,8 +237,8 @@ class EvidenceWrite:
     """What was persisted, and enough of the index to link claims and contradictions."""
 
     sources_by_url: dict[str, uuid.UUID]
-    #: citation_index → the first evidence row from that source. `[n]` resolves through this.
-    evidence_by_index: dict[int, uuid.UUID]
+    #: citation_index → all evidence rows from that source. `[n]` resolves through these.
+    evidence_by_index: dict[int, list[uuid.UUID]]
     #: (source_id, quoted text) → every evidence row carrying it. A list, because a
     #: contradiction may only refine to a UNIQUE match.
     evidence_by_quote: dict[tuple[uuid.UUID, str], list[uuid.UUID]]
@@ -273,7 +273,7 @@ async def record_evidence(
             title_by_url[norm] = entry["title"]
 
     sources_by_url: dict[str, uuid.UUID] = {}
-    evidence_by_index: dict[int, uuid.UUID] = {}
+    evidence_by_index: dict[int, list[uuid.UUID]] = {}
     evidence_by_quote: dict[tuple[uuid.UUID, str], list[uuid.UUID]] = {}
 
     base = (
@@ -350,8 +350,8 @@ async def record_evidence(
         idx = index_by_url.get(norm)
 
         if existing_eid is not None:
-            if idx is not None and idx not in evidence_by_index:
-                evidence_by_index[idx] = existing_eid
+            if idx is not None:
+                evidence_by_index.setdefault(idx, []).append(existing_eid)
             evidence_by_quote.setdefault(
                 (source_id, snippet.strip()[:500]), []
             ).append(existing_eid)
@@ -404,8 +404,8 @@ async def record_evidence(
         )
         watermark = sequence
         idx = index_by_url.get(norm)
-        if idx is not None and idx not in evidence_by_index:
-            evidence_by_index[idx] = eid
+        if idx is not None:
+            evidence_by_index.setdefault(idx, []).append(eid)
         evidence_by_quote.setdefault((source_id, snippet.strip()[:500]), []).append(eid)
 
     await db.flush()
@@ -512,26 +512,25 @@ async def record_revision(
         db.add(claim)
         claim_count += 1
         for marker in dict.fromkeys(claim_rules.extract_citations(text)):
-            target = by_index.get(marker)
-            if target is None:
-                continue  # a marker resolving to nothing links to nothing
-            db.add(
-                ClaimEvidenceLink(
-                    id=uuid.uuid4(),
-                    run_id=run.id,
-                    claim_id=claim.id,
-                    evidence_id=target,
-                    stance="SUPPORTS",
-                    origin="CITATION_MARKER",
+            targets = by_index.get(marker, [])
+            for target in dict.fromkeys(targets):
+                db.add(
+                    ClaimEvidenceLink(
+                        id=uuid.uuid4(),
+                        run_id=run.id,
+                        claim_id=claim.id,
+                        evidence_id=target,
+                        stance="SUPPORTS",
+                        origin="CITATION_MARKER",
+                    )
                 )
-            )
-            link_count += 1
+                link_count += 1
     await db.flush()
     return RevisionWrite(revision=revision, claim_count=claim_count, link_count=link_count)
 
 
-async def _evidence_by_citation_index(db: AsyncSession, run_id) -> dict[int, uuid.UUID]:
-    """citation_index → first evidence row, rebuilt from the database.
+async def _evidence_by_citation_index(db: AsyncSession, run_id) -> dict[int, list[uuid.UUID]]:
+    """citation_index → all evidence rows, rebuilt from the database.
 
     Used when a revision is written in a later transaction than its evidence (rework), so
     the in-memory index from `record_evidence` is gone. Uncited sources are excluded by the
@@ -545,9 +544,9 @@ async def _evidence_by_citation_index(db: AsyncSession, run_id) -> dict[int, uui
             .order_by(Evidence.sequence.asc(), Evidence.id.asc())
         )
     ).all()
-    out: dict[int, uuid.UUID] = {}
+    out: dict[int, list[uuid.UUID]] = {}
     for index, evidence_id in rows:
-        out.setdefault(index, evidence_id)
+        out.setdefault(index, []).append(evidence_id)
     return out
 
 

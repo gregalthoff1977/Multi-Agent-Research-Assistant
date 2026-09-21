@@ -521,6 +521,76 @@
           "evidence_id": "<uuid>",
           "stance": "SUPPORTS",
           "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
         }
       ],
       "contradictions": [],
@@ -1082,6 +1152,146 @@
         }
       ],
       "claim_evidence_links": [
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
         {
           "id": "<uuid>",
           "claim_id": "<uuid>",
@@ -1793,6 +2003,146 @@
         }
       ],
       "claim_evidence_links": [
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
+        {
+          "id": "<uuid>",
+          "claim_id": "<uuid>",
+          "evidence_id": "<uuid>",
+          "stance": "SUPPORTS",
+          "origin": "CITATION_MARKER"
+        },
         {
           "id": "<uuid>",
           "claim_id": "<uuid>",
