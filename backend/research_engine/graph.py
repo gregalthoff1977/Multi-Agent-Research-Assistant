@@ -207,26 +207,13 @@ def _acc(state: AgentState, cost: float, i: int, o: int) -> dict:
 # ── Nodes ─────────────────────────────────────────────────────────────────────────
 
 
-_FOUR_C_DOMAIN_PATTERNS: dict[str, re.Pattern[str]] = {
-    "consumer": re.compile(r"\bconsumer(?:s)?\b", re.I),
-    "company": re.compile(r"\bcompan(?:y|ies)\b", re.I),
-    "category": re.compile(r"\bcategor(?:y|ies)\b", re.I),
-    "culture": re.compile(r"\bcultur(?:e|al)\b", re.I),
-}
+_FOUR_C_DOMAINS = {"consumer", "company", "category", "culture"}
 
 
-def _planner_coverage_issues(query: str, tasks: list[dict]) -> list[str]:
-    """Deterministic checks for coverage the user explicitly requested.
-
-    The model chooses which Four Cs matter when the brief is open-ended. When the user
-    names all four, however, omitting three of them is not judgment — it is a broken plan.
-    Fast/balanced/comprehensive controls worker effort later and must never become a hidden
-    plan-size knob.
-    """
-    requested = {
-        domain for domain, pattern in _FOUR_C_DOMAIN_PATTERNS.items() if pattern.search(query or "")
-    }
-    if requested != set(_FOUR_C_DOMAIN_PATTERNS):
+def _planner_coverage_issues(required_domains: tuple[str, ...] | list[str], tasks: list[dict]) -> list[str]:
+    """Deterministic checks for the researcher's explicit Four Cs contract."""
+    requested = {str(d).lower() for d in (required_domains or ()) if str(d).lower() in _FOUR_C_DOMAINS}
+    if not requested:
         return []
 
     issues: list[str] = []
@@ -238,11 +225,12 @@ def _planner_coverage_issues(query: str, tasks: list[dict]) -> list[str]:
 
     missing = sorted(d for d, items in by_domain.items() if not items)
     if missing:
-        issues.append("missing explicitly requested domains: " + ", ".join(missing))
+        issues.append("missing required domains: " + ", ".join(missing))
 
-    if len(tasks) < 12:
+    # A full Four Cs sweep needs enough atomic questions to establish real coverage.
+    if requested == _FOUR_C_DOMAINS and len(tasks) < 12:
         issues.append(
-            f"only {len(tasks)} tasks for an explicit Four Cs brief; produce at least 12 "
+            f"only {len(tasks)} tasks for a required Four Cs brief; produce at least 12 "
             "atomic tasks so the four domains have meaningful coverage"
         )
 
@@ -255,7 +243,6 @@ def _planner_coverage_issues(query: str, tasks: list[dict]) -> list[str]:
         issues.append("insufficient module breadth: " + ", ".join(thin))
 
     return issues
-
 
 async def planner_node(state: AgentState) -> dict:
     sid = state["session_id"]
@@ -283,6 +270,7 @@ async def planner_node(state: AgentState) -> dict:
                 state["original_query"],
                 state.get("research_depth", "balanced"),
                 cfg.topic_seeds,
+                cfg.required_domains,
             )
         ),
     ]
@@ -322,7 +310,7 @@ async def planner_node(state: AgentState) -> dict:
 
     tasks = [t.model_dump() for t in parsed.tasks]
 
-    coverage_issues = _planner_coverage_issues(state["original_query"], tasks)
+    coverage_issues = _planner_coverage_issues(cfg.required_domains, tasks)
     if coverage_issues:
         await emit(
             sid,
@@ -337,7 +325,7 @@ async def planner_node(state: AgentState) -> dict:
                     "Your proposed plan failed deterministic coverage checks:\n- "
                     + "\n- ".join(coverage_issues)
                     + "\nRebuild the COMPLETE plan, not just the missing tasks. Preserve atomicity, "
-                    "cover every explicitly requested Four Cs domain, and remember that "
+                    "cover every required Four Cs domain, and remember that "
                     "execution depth does not reduce plan coverage."
                 )
             )
@@ -347,7 +335,7 @@ async def planner_node(state: AgentState) -> dict:
         if repaired is not None:
             parsed = repaired
             tasks = [t.model_dump() for t in parsed.tasks]
-        coverage_issues = _planner_coverage_issues(state["original_query"], tasks)
+        coverage_issues = _planner_coverage_issues(cfg.required_domains, tasks)
         if coverage_issues:
             logger.error(
                 "planner_coverage_incomplete",
