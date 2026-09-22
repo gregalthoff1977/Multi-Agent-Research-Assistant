@@ -1436,6 +1436,7 @@ def create_sidecar_app(
                 overrides = {
                     "skip_plan_gate": bool(run.skip_plan_gate),
                     "topic_seeds": tuple(run.topic_seeds or ()),
+                    "required_domains": tuple(run.required_domains or ()),
                     "outline_template": run.outline_template,
                     # Server counterpart: `run_execution.run_config_for_run`, which sets
                     # the same field. `execute_run` also branches on `run.corpus_mode`, but
