@@ -34,8 +34,9 @@ Modules: Behaviors, Attitudes, Values, Language, Aesthetics, Communities, Media,
 Technology, Rituals, Emerging Signals, Counter-signals.
 
 PLAN HIERARCHICALLY:
-1. Decide which of the Four Cs the user's request actually requires. Do not force all four.
-2. Within each selected C, choose the modules needed to answer the request.
+1. If the human turn supplies Required Four Cs domains, treat that selection as a hard
+   contract. Otherwise decide which of the Four Cs the user's request actually requires.
+2. Within each required or selected C, choose the modules needed to answer the request.
 3. Within each module, determine what must be established with evidence.
 4. Turn each need into one narrow, atomic research task.
 5. Check the complete plan for coverage, duplication, answerability, missing contrasts,
