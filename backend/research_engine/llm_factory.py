@@ -22,7 +22,11 @@ logger = structlog.get_logger()
 
 # Roles → per-role generation config.
 _ROLE_CONFIG = {
-    "planner": {"temperature": 0.1, "max_tokens": 2000},
+    # Four Cs plans carry structured metadata on every atomic task. A 2k output ceiling
+    # silently capped real plans at roughly 4-6 tasks, making 12+ task coverage impossible
+    # even though the planner schema allows 100. Keep planning cheap with a fast model, but
+    # give the structured response enough room for broad research designs.
+    "planner": {"temperature": 0.1, "max_tokens": 12000},
     "executor": {"temperature": 0.2, "max_tokens": 4000},
     "critic": {"temperature": 0.0, "max_tokens": 1000},
     "synthesizer": {"temperature": 0.2, "max_tokens": 6000},
