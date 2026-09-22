@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import uuid
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -32,6 +34,7 @@ class CreateRunRequest(BaseModel):
     corpus_mode: bool = False
     skip_plan_gate: bool = True
     topic_seeds: list | None = None
+    required_domains: list[Literal["consumer", "company", "category", "culture"]] | None = None
     outline_template: str | None = None
     #: Per-run routing, one `provider:model` per agent role. `None` means "use whatever
     #: this user's saved preference and the deployment resolve to", which is the existing
