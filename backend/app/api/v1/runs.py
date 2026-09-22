@@ -215,6 +215,7 @@ async def project_run(db: AsyncSession, run: ResearchRun) -> dict:
             "corpus_mode": run.corpus_mode,
             "demo": run.demo,
             "skip_plan_gate": run.skip_plan_gate,
+            "required_domains": run.required_domains,
             "model_routing": run.model_routing,
             "cost_usd": float(run.cost_usd),
             "tokens_input": run.tokens_input,
@@ -407,6 +408,7 @@ async def create_run(
         corpus_mode=body.corpus_mode,
         skip_plan_gate=body.skip_plan_gate,
         topic_seeds=body.topic_seeds,
+        required_domains=body.required_domains,
         outline_template=body.outline_template,
         model_routing=routing,
     )
