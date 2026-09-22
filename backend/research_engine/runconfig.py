@@ -124,6 +124,8 @@ class RunConfig:
     # topics, no outline template" — exactly today's unconstrained planner.
     outline_template: str | None = None
     topic_seeds: tuple[str, ...] = ()
+    # Hard planning contract chosen by the researcher. Empty preserves legacy generic runs.
+    required_domains: tuple[str, ...] = ()
     # Role → replacement prompt text. No consumer yet; declared so the config path
     # exists ahead of whichever future phase reads it, rather than adding a fourth
     # place this contract has to be threaded through later.
