@@ -1559,14 +1559,6 @@ async def synthesizer_node(state: AgentState) -> dict:
         evidence_lines.append("")  # blank separator
     evidence_text = "Evidence for citation:\n" + "\n".join(evidence_lines)
 
-    logger.info(
-        "synthesis_input_state",
-        session_id=sid,
-        evidence_count=len(numbered_evidence),
-        human_feedback=state.get("human_feedback"),
-        proposed_outline=state.get("proposed_outline"),
-    )
-
     messages = [
         SystemMessage(content=prompts.SYNTHESIZER_PROMPT_V2),
         HumanMessage(
@@ -1584,31 +1576,57 @@ async def synthesizer_node(state: AgentState) -> dict:
     model = get_llm("synthesizer")
     resp = await model.ainvoke(messages)
     draft = text_of(resp)
-    logger.info(
-        "synthesis_initial_draft",
-        session_id=sid,
-        word_count=len(draft.split()),
-        character_count=len(draft),
-    )
     cost = estimate_cost(resp, "synthesizer")
     i, o = token_counts(resp)
 
-    # Citation repair pass: fix uncited claims if any exist.
-    # Inline uncited-count to avoid a cross-package dependency on evals.metrics:
-    # count sentences that contain assertive text but carry no [n] marker.
+    # A real run proved the synthesizer can occasionally return a ~150-word report from
+    # the same evidence set that produced a ~2,400-word report on another call. For
+    # evidence-rich runs, treat that as incomplete generation and retry once.
+    evidence_count = len(numbered_evidence)
+    if evidence_count >= 20 and len(draft.split()) < 500:
+        retry_messages = [
+            SystemMessage(content=prompts.SYNTHESIZER_PROMPT_V2),
+            HumanMessage(
+                content=messages[1].content
+                + "\n\nThe previous synthesis was materially incomplete. Produce the full "
+                "report now. Substantially represent the useful evidence breadth and aim for "
+                "20–30 distinct evidence-backed findings when supported. Do not return a "
+                "brief summary."
+            ),
+        ]
+        retry_resp = await model.ainvoke(retry_messages)
+        retry_draft = text_of(retry_resp)
+        retry_cost = estimate_cost(retry_resp, "synthesizer")
+        ri, ro = token_counts(retry_resp)
+        cost += retry_cost
+        i += ri
+        o += ro
+        if len(retry_draft.split()) > len(draft.split()):
+            draft = retry_draft
+            resp = retry_resp
+
+    # Citation repair pass: fix uncited factual claims if any exist. Use the same claim
+    # splitter as the verifier so abbreviations such as "U.S." do not create fragments.
     _claim_re = re.compile(r"\[\d+\]")
-    uncited = 0
-    for _sentence in re.split(r"(?<=[.!?])\s+", draft):
-        s = _sentence.strip()
-        if len(s) < 15 or not re.search(r"[A-Za-z]", s):
+    uncited_sentences: list[str] = []
+    skipping_limitations = False
+    for raw in draft.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            if line:
+                skipping_limitations = bool(_VLIMITATIONS_HEADING_RE.match(line))
             continue
-        if not _claim_re.search(s):
-            uncited += 1
-            logger.info(
-                "synthesis_uncited_sentence",
-                session_id=sid,
-                sentence=s,
-            )
+        if skipping_limitations:
+            continue
+        content = _VLIST_MARKER_RE.sub("", line)
+        for sentence in claims.split_sentences(content):
+            s = sentence.strip()
+            if not claims.is_claim_sentence(s):
+                continue
+            if not _claim_re.search(s):
+                uncited_sentences.append(s)
+
+    uncited = len(uncited_sentences)
     if uncited > 0:
         repair_messages = [
             SystemMessage(content=prompts.SYNTHESIZER_REPAIR_PROMPT),
@@ -1623,31 +1641,26 @@ async def synthesizer_node(state: AgentState) -> dict:
         original_word_count = len(draft.split())
         repaired_word_count = len(repaired_draft.split())
 
+        # Citation repair is not allowed to collapse a good long report into a tiny one.
         if repaired_word_count >= original_word_count * 0.70:
             draft = repaired_draft
-            repair_accepted = True
-        else:
-            repair_accepted = False
+            resp = repair_resp
 
-        logger.info(
-            "synthesis_repaired_draft",
-            session_id=sid,
-            original_word_count=original_word_count,
-            repaired_word_count=repaired_word_count,
-            repair_accepted=repair_accepted,
-            uncited_sentences_repaired=uncited,
-        )
         repair_cost = estimate_cost(repair_resp, "synthesizer")
         ri, ro = token_counts(repair_resp)
         cost += repair_cost
         i += ri
         o += ro
-        resp = repair_resp  # the repair pass's response is the last one actually served
         await emit(
             sid,
             "agent_log",
             agent="synthesizer",
-            message=f"Citation repair: fixed {uncited} uncited claims",
+            message=(
+                f"Citation repair: fixed {uncited} uncited claims"
+                if repaired_word_count >= original_word_count * 0.70
+                else f"Citation repair rejected: output shrank from {original_word_count} to "
+                f"{repaired_word_count} words"
+            ),
         )
 
     # Citation-fidelity check (docs/12 M5): every remaining cited claim is judged against
