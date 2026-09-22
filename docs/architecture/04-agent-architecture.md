@@ -221,13 +221,15 @@ there must never be followed, and that they should be reported as suspicious.
 Versioned constants in `research_engine/prompts.py`, never inline in node code.
 
 - **Planner** — designs research hierarchically through the Four Cs (Consumer, Company,
-  Category, Culture), selects the relevant modules inside them, then produces atomic
-  evidence questions with geography/population/time/evidence/source requirements. Coverage
-  determines task count; the configured cap is only a safety ceiling. **Research depth is
-  executor effort, never plan scope.** When a brief explicitly names all Four Cs, a
-  deterministic coverage check requires every domain, at least two modules per domain,
-  and at least 12 atomic tasks; the planner gets one repair attempt and fails closed if the
-  required breadth is still missing. Seed subtopics remain a coverage floor rather than a ceiling.
+  Category, Culture). Run-based research supplies an explicit `required_domains` contract
+  from the start form; all four are selected by default, and the planner does not infer the
+  selected Cs from question wording. Within those required domains it chooses the relevant
+  modules, then produces atomic evidence questions with geography/population/time/evidence/
+  source requirements. Coverage determines task count; the configured cap is only a safety
+  ceiling. **Research depth is executor effort, never plan scope.** A full Four Cs contract
+  requires every domain, at least two modules per domain, and at least 12 atomic tasks; the
+  planner gets one repair attempt and fails closed if the required breadth is still missing.
+  Seed subtopics remain a coverage floor rather than a ceiling.
 - **Executor** — gather facts only, no synthesis; every fact carries a verbatim snippet and
   a URL. It receives the full task research specification and prioritizes the source types,
   freshness, geography, population, and quality floor the plan calls for.
