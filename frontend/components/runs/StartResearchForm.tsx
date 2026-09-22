@@ -37,7 +37,7 @@ import type { ResearchDepth, ResearchDomain } from "@/lib/types";
  * in the product that could not reach them.
  *
  * **Only fields the endpoint accepts appear here.** `POST /runs` takes `project_id`,
- * `question`, `depth`, `corpus_mode`, `skip_plan_gate` and `model_routing`. It does not
+ * `question`, `depth`, `corpus_mode`, `skip_plan_gate`, `required_domains` and `model_routing`. It does not
  * take `demo`, so that is not offered — a control that posts a field the server drops is
  * worse than a missing one.
  *
