@@ -84,6 +84,7 @@ async def create_run(
     demo: bool = False,
     skip_plan_gate: bool = True,
     topic_seeds: list | None = None,
+    required_domains: list | None = None,
     outline_template: str | None = None,
     model_routing: dict | None = None,
 ) -> ResearchRun:
@@ -99,6 +100,7 @@ async def create_run(
         demo=demo,
         skip_plan_gate=skip_plan_gate,
         topic_seeds=topic_seeds,
+        required_domains=required_domains,
         outline_template=outline_template,
         model_routing=model_routing,
         cost_usd=0,
