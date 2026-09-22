@@ -208,10 +208,10 @@ def _acc(state: AgentState, cost: float, i: int, o: int) -> dict:
 
 
 _FOUR_C_DOMAIN_PATTERNS: dict[str, re.Pattern[str]] = {
-    "consumer": re.compile(r"\\bconsumer(?:s)?\\b", re.I),
-    "company": re.compile(r"\\bcompan(?:y|ies)\\b", re.I),
-    "category": re.compile(r"\\bcategor(?:y|ies)\\b", re.I),
-    "culture": re.compile(r"\\bcultur(?:e|al)\\b", re.I),
+    "consumer": re.compile(r"\bconsumer(?:s)?\b", re.I),
+    "company": re.compile(r"\bcompan(?:y|ies)\b", re.I),
+    "category": re.compile(r"\bcategor(?:y|ies)\b", re.I),
+    "culture": re.compile(r"\bcultur(?:e|al)\b", re.I),
 }
 
 
