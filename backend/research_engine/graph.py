@@ -207,6 +207,56 @@ def _acc(state: AgentState, cost: float, i: int, o: int) -> dict:
 # ── Nodes ─────────────────────────────────────────────────────────────────────────
 
 
+_FOUR_C_DOMAIN_PATTERNS: dict[str, re.Pattern[str]] = {
+    "consumer": re.compile(r"\\bconsumer(?:s)?\\b", re.I),
+    "company": re.compile(r"\\bcompan(?:y|ies)\\b", re.I),
+    "category": re.compile(r"\\bcategor(?:y|ies)\\b", re.I),
+    "culture": re.compile(r"\\bcultur(?:e|al)\\b", re.I),
+}
+
+
+def _planner_coverage_issues(query: str, tasks: list[dict]) -> list[str]:
+    """Deterministic checks for coverage the user explicitly requested.
+
+    The model chooses which Four Cs matter when the brief is open-ended. When the user
+    names all four, however, omitting three of them is not judgment — it is a broken plan.
+    Fast/balanced/comprehensive controls worker effort later and must never become a hidden
+    plan-size knob.
+    """
+    requested = {
+        domain for domain, pattern in _FOUR_C_DOMAIN_PATTERNS.items() if pattern.search(query or "")
+    }
+    if requested != set(_FOUR_C_DOMAIN_PATTERNS):
+        return []
+
+    issues: list[str] = []
+    by_domain: dict[str, list[dict]] = {d: [] for d in requested}
+    for task in tasks:
+        domain = str(task.get("domain") or "").lower()
+        if domain in by_domain:
+            by_domain[domain].append(task)
+
+    missing = sorted(d for d, items in by_domain.items() if not items)
+    if missing:
+        issues.append("missing explicitly requested domains: " + ", ".join(missing))
+
+    if len(tasks) < 12:
+        issues.append(
+            f"only {len(tasks)} tasks for an explicit Four Cs brief; produce at least 12 "
+            "atomic tasks so the four domains have meaningful coverage"
+        )
+
+    thin = []
+    for domain, items in sorted(by_domain.items()):
+        modules = {str(t.get("module") or "").strip().lower() for t in items if t.get("module")}
+        if len(modules) < 2:
+            thin.append(f"{domain} ({len(modules)} module{'s' if len(modules) != 1 else ''})")
+    if thin:
+        issues.append("insufficient module breadth: " + ", ".join(thin))
+
+    return issues
+
+
 async def planner_node(state: AgentState) -> dict:
     sid = state["session_id"]
     cfg = get_run_config()
@@ -271,6 +321,45 @@ async def planner_node(state: AgentState) -> dict:
         return {"error": "planner: could not produce a valid task list", **_acc(state, cost, i, o)}
 
     tasks = [t.model_dump() for t in parsed.tasks]
+
+    coverage_issues = _planner_coverage_issues(state["original_query"], tasks)
+    if coverage_issues:
+        await emit(
+            sid,
+            "agent_log",
+            agent="planner",
+            message="Planner coverage incomplete — retrying once",
+            detail={"issues": coverage_issues, "task_count": len(tasks)},
+        )
+        repair_messages = messages + [
+            HumanMessage(
+                content=(
+                    "Your proposed plan failed deterministic coverage checks:\n- "
+                    + "\n- ".join(coverage_issues)
+                    + "\nRebuild the COMPLETE plan, not just the missing tasks. Preserve atomicity, "
+                    "cover every explicitly requested Four Cs domain, and remember that "
+                    "execution depth does not reduce plan coverage."
+                )
+            )
+        ]
+        repaired, c2, i2, o2 = await _structured("planner", repair_messages, PlannerOutput)
+        cost, i, o = cost + c2, i + i2, o + o2
+        if repaired is not None:
+            parsed = repaired
+            tasks = [t.model_dump() for t in parsed.tasks]
+        coverage_issues = _planner_coverage_issues(state["original_query"], tasks)
+        if coverage_issues:
+            logger.error(
+                "planner_coverage_incomplete",
+                session_id=sid,
+                issues=coverage_issues,
+                task_count=len(tasks),
+            )
+            return {
+                "error": "planner: incomplete Four Cs coverage — " + "; ".join(coverage_issues),
+                **_acc(state, cost, i, o),
+            }
+
     # An explicitly chosen template outranks whatever the model proposed: the researcher
     # picked a structure before the run started, and quietly replacing it with the
     # planner's own idea would make the picker decorative. With no template chosen this

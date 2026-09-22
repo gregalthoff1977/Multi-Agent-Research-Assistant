@@ -45,3 +45,42 @@ def test_synthesizer_keeps_research_separate_from_strategy():
     assert "Research Gaps" in prompt
     assert "Consumer Findings" in prompt
     assert "Culture Findings" in prompt
+
+
+def test_fast_depth_is_worker_effort_not_plan_scope():
+    human = prompts.planner_human("consumer company category culture", "fast", [])
+    assert "worker effort only" in human
+    assert "do not reduce research-plan coverage" in human
+
+
+def test_explicit_four_cs_plan_requires_breadth():
+    from research_engine.graph import _planner_coverage_issues
+
+    query = "Research the consumer, company, category and culture around cold brew."
+    thin = [
+        {"domain": "consumer", "module": "Behaviors", "query": "q1"},
+        {"domain": "consumer", "module": "Motivations", "query": "q2"},
+        {"domain": "consumer", "module": "Occasions", "query": "q3"},
+        {"domain": "consumer", "module": "Perceptions", "query": "q4"},
+    ]
+    issues = _planner_coverage_issues(query, thin)
+    assert any("missing explicitly requested domains" in issue for issue in issues)
+    assert any("at least 12 atomic tasks" in issue for issue in issues)
+
+
+def test_explicit_four_cs_plan_passes_with_domain_and_module_coverage():
+    from research_engine.graph import _planner_coverage_issues
+
+    query = "Research the consumer, company, category and culture around cold brew."
+    tasks = []
+    modules = {
+        "consumer": ["Behaviors", "Motivations", "Occasions"],
+        "company": ["Product", "Brand", "Channels"],
+        "category": ["Growth", "Competitors", "Pricing"],
+        "culture": ["Rituals", "Emerging Signals", "Language"],
+    }
+    for domain, names in modules.items():
+        for module in names:
+            tasks.append({"domain": domain, "module": module, "query": f"{domain} {module}"})
+
+    assert _planner_coverage_issues(query, tasks) == []

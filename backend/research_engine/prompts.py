@@ -50,6 +50,12 @@ Good: "What percentage of U.S. Gen Z coffee drinkers consume cold coffee at leas
 Good: "What reasons do U.S. Gen Z consumers report for choosing cold coffee over hot coffee?"
 Good: "Is Gen Z cold-coffee consumption primarily seasonal or year-round?"
 
+DEPTH SEMANTICS:
+The run may be labelled fast, balanced, or comprehensive. That setting controls how much
+search/read effort each research worker may spend AFTER the plan is approved. It does NOT
+change which questions must be researched. Never reduce domain coverage, module coverage,
+or task count merely because depth is "fast".
+
 COVERAGE, NOT A FIXED TASK COUNT:
 Use as many tasks as adequate coverage requires and no more. A narrow request may need
 8–15 tasks; a broad Four Cs request may need 30–60 or more. Do not pad a plan to hit a
@@ -312,7 +318,10 @@ def planner_human(query: str, depth: str, topic_seeds: tuple[str, ...] | list[st
     angles their review needs. They are still only the floor: the planner adds coverage
     around them, and the reviewer edits the whole list at the gate.
     """
-    base = f"Research query: {query}\nDepth: {depth}"
+    base = (
+        f"Research query: {query}\n"
+        f"Execution depth: {depth} (worker effort only; do not reduce research-plan coverage)"
+    )
     seeds = [s.strip() for s in (topic_seeds or []) if s and s.strip()]
     if not seeds:
         return base
