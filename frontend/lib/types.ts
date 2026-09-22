@@ -18,6 +18,7 @@ export type SessionStatus =
   | "FAILED";
 
 export type ResearchDepth = "fast" | "balanced" | "comprehensive";
+export type ResearchDomain = "consumer" | "company" | "category" | "culture";
 
 /**
  * What a follow-up question may read (docs/07 §2, Phase 5; req 8). Mirrors
@@ -415,7 +416,7 @@ export interface PlanTask {
   query: string;
   rationale: string;
   /** Four Cs research-design metadata. Optional because historical plans predate V2. */
-  domain?: "consumer" | "company" | "category" | "culture" | null;
+  domain?: ResearchDomain | null;
   module?: string;
   geography?: string;
   population?: string;
@@ -499,6 +500,7 @@ export interface Run {
   corpus_mode: boolean;
   demo: boolean;
   skip_plan_gate: boolean;
+  required_domains: ResearchDomain[] | null;
   model_routing: Record<string, string> | null;
   cost_usd: number;
   tokens_input: number;
