@@ -120,6 +120,7 @@ async def run_config_for_run(db: AsyncSession, run: ResearchRun) -> RunConfig:
     overrides |= {
         "skip_plan_gate": bool(run.skip_plan_gate),
         "topic_seeds": tuple(run.topic_seeds or ()),
+        "required_domains": tuple(run.required_domains or ()),
         "outline_template": run.outline_template,
         # Installing the corpus port (`execute_run`, below) only decides what `get_corpus()`
         # answers. This is what makes the engine *ask* it: `retrievers.search` and
