@@ -9,6 +9,7 @@ import type {
   AgentEvent,
   ModelRouting,
   PlanTask,
+  ResearchDomain,
   RunGraph,
   RunSummary,
   RunVerification,
@@ -115,6 +116,7 @@ export function useStartV2Research() {
       depth?: string;
       corpus_mode?: boolean;
       skip_plan_gate?: boolean;
+      required_domains?: ResearchDomain[];
       /** One `provider:model` per role. Omitted entirely to use saved settings — an
        *  explicit `null` would be a routing the server then has to interpret. */
       model_routing?: ModelRouting;
