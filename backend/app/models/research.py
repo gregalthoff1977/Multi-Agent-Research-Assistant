@@ -119,6 +119,7 @@ class ResearchRun(Base):
     demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     skip_plan_gate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     topic_seeds: Mapped[list | None] = mapped_column(JsonType, nullable=True)
+    required_domains: Mapped[list | None] = mapped_column(JsonType, nullable=True)
     outline_template: Mapped[str | None] = mapped_column(String(64), nullable=True)
     model_routing: Mapped[dict | None] = mapped_column(JsonType, nullable=True)
 
