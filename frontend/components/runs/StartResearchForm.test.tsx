@@ -115,7 +115,25 @@ describe("StartResearchForm", () => {
         // endpoint's own default — see AGENTS.md on the three `skip_plan_gate` defaults.
         // It is sent explicitly for exactly that reason.
         skip_plan_gate: false,
+        required_domains: ["consumer", "company", "category", "culture"],
       },
+      expect.anything(),
+    );
+  });
+
+  it("requires at least one research area and sends the selected Four Cs", () => {
+    view();
+    fireEvent.change(screen.getByLabelText("Research question"), { target: { value: LONG } });
+    for (const name of ["Consumer", "Company", "Category", "Culture"]) {
+      fireEvent.click(screen.getByRole("checkbox", { name: new RegExp("^" + name) }));
+    }
+    expect(screen.getByText("Select at least one research area.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start research" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /^Consumer/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Start research" }));
+    expect(mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ required_domains: ["consumer"] }),
       expect.anything(),
     );
   });
