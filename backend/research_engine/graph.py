@@ -1559,6 +1559,14 @@ async def synthesizer_node(state: AgentState) -> dict:
         evidence_lines.append("")  # blank separator
     evidence_text = "Evidence for citation:\n" + "\n".join(evidence_lines)
 
+    logger.info(
+        "synthesis_input_state",
+        session_id=sid,
+        evidence_count=len(numbered_evidence),
+        human_feedback=state.get("human_feedback"),
+        proposed_outline=state.get("proposed_outline"),
+    )
+
     messages = [
         SystemMessage(content=prompts.SYNTHESIZER_PROMPT_V2),
         HumanMessage(
@@ -1576,6 +1584,12 @@ async def synthesizer_node(state: AgentState) -> dict:
     model = get_llm("synthesizer")
     resp = await model.ainvoke(messages)
     draft = text_of(resp)
+    logger.info(
+        "synthesis_initial_draft",
+        session_id=sid,
+        word_count=len(draft.split()),
+        character_count=len(draft),
+    )
     cost = estimate_cost(resp, "synthesizer")
     i, o = token_counts(resp)
 
@@ -1590,6 +1604,11 @@ async def synthesizer_node(state: AgentState) -> dict:
             continue
         if not _claim_re.search(s):
             uncited += 1
+            logger.info(
+                "synthesis_uncited_sentence",
+                session_id=sid,
+                sentence=s,
+            )
     if uncited > 0:
         repair_messages = [
             SystemMessage(content=prompts.SYNTHESIZER_REPAIR_PROMPT),
@@ -1599,7 +1618,25 @@ async def synthesizer_node(state: AgentState) -> dict:
             ),
         ]
         repair_resp = await model.ainvoke(repair_messages)
-        draft = text_of(repair_resp)
+        repaired_draft = text_of(repair_resp)
+
+        original_word_count = len(draft.split())
+        repaired_word_count = len(repaired_draft.split())
+
+        if repaired_word_count >= original_word_count * 0.70:
+            draft = repaired_draft
+            repair_accepted = True
+        else:
+            repair_accepted = False
+
+        logger.info(
+            "synthesis_repaired_draft",
+            session_id=sid,
+            original_word_count=original_word_count,
+            repaired_word_count=repaired_word_count,
+            repair_accepted=repair_accepted,
+            uncited_sentences_repaired=uncited,
+        )
         repair_cost = estimate_cost(repair_resp, "synthesizer")
         ri, ro = token_counts(repair_resp)
         cost += repair_cost
@@ -1618,6 +1655,12 @@ async def synthesizer_node(state: AgentState) -> dict:
     # the repair pass so a repair-introduced drift is caught too. Unsupported claims lose
     # their markers and carry a visible note rather than shipping a hollow citation.
     draft, vcost, vi, vo = await _verify_citation_fidelity(sid, draft, sources)
+    logger.info(
+        "synthesis_verified_draft",
+        session_id=sid,
+        word_count=len(draft.split()),
+        character_count=len(draft),
+    )
     cost += vcost
     i += vi
     o += vo
