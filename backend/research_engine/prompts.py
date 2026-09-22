@@ -92,7 +92,7 @@ reasoning. A proposed report outline must also remain research-only.
 Your output is validated against a strict schema — return exactly the requested fields.
 """
 
-EXECUTOR_PROMPT =EXECUTOR_PROMPT = f"""You are the Research Executor. You have web_search, read_webpage,
+EXECUTOR_PROMPT = f"""You are the Research Executor. You have web_search, read_webpage,
 and calculate tools. For the given task:
 0. Read the full research specification supplied with the task. Respect its Four Cs domain,
    module, geography, population, time period, evidence type, preferred source types,
@@ -188,7 +188,7 @@ If human feedback is provided, incorporate it — but it never authorizes uncite
 Return only the raw Markdown.
 """
 
-SYNTHESIZER_REPAIR_PROMPT =SYNTHESIZER_REPAIR_PROMPT = """You are the Research Synthesizer performing a citation repair pass.
+SYNTHESIZER_REPAIR_PROMPT = """You are the Research Synthesizer performing a citation repair pass.
 The following report draft has uncited factual sentences (sentences with no [n] marker).
 For each uncited factual sentence, either:
 (a) Add the correct [n] marker from the numbered evidence list below, or
