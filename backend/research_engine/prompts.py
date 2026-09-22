@@ -311,7 +311,12 @@ Rules, in order of importance:
 # run that uses neither feature produces exactly the report it produced before.
 
 
-def planner_human(query: str, depth: str, topic_seeds: tuple[str, ...] | list[str]) -> str:
+def planner_human(
+    query: str,
+    depth: str,
+    topic_seeds: tuple[str, ...] | list[str],
+    required_domains: tuple[str, ...] | list[str] = (),
+) -> str:
     """The planner's human turn: the query, the depth, and any seeded subtopics.
 
     Seeds are a *constraint*, not a suggestion — the researcher has said these are the
@@ -322,6 +327,16 @@ def planner_human(query: str, depth: str, topic_seeds: tuple[str, ...] | list[st
         f"Research query: {query}\n"
         f"Execution depth: {depth} (worker effort only; do not reduce research-plan coverage)"
     )
+    domains = [d.strip().lower() for d in (required_domains or []) if d and d.strip()]
+    if domains:
+        listed_domains = ", ".join(domains)
+        base += (
+            "\n\nRequired Four Cs domains: "
+            + listed_domains
+            + ". These are a hard planning contract. Cover every listed domain with "
+              "meaningful module breadth before the design gate."
+        )
+
     seeds = [s.strip() for s in (topic_seeds or []) if s and s.strip()]
     if not seeds:
         return base
