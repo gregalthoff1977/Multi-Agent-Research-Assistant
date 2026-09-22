@@ -21,7 +21,7 @@ import {
 } from "@/hooks/queries";
 import { useStartV2Research } from "@/hooks/runs";
 import { ApiError } from "@/lib/api";
-import type { ResearchDepth } from "@/lib/types";
+import type { ResearchDepth, ResearchDomain } from "@/lib/types";
 
 /**
  * Asking the question.
@@ -63,6 +63,13 @@ const MAX_QUERY = 2000;
  * not a vague promise of thoroughness: depth was a word in a prompt until `_DEPTH_LIMITS`,
  * and every setting cost the same eight turns per task.
  */
+const DOMAINS: { value: ResearchDomain; label: string; hint: string }[] = [
+  { value: "consumer", label: "Consumer", hint: "People, behaviors, needs, motivations, and change." },
+  { value: "company", label: "Company", hint: "Brand, business, product, portfolio, channels, and history." },
+  { value: "category", label: "Category", hint: "Market structure, competitors, conventions, growth, and change." },
+  { value: "culture", label: "Culture", hint: "Values, language, aesthetics, communities, rituals, and emerging signals." },
+];
+
 const DEPTHS: { value: ResearchDepth; label: string; hint: string }[] = [
   {
     value: "fast",
@@ -95,6 +102,7 @@ export function StartResearchForm({
   const { activeId, active, isLoading: projectsLoading } = useActiveProject();
   const [question, setQuestion] = useState(initialQuestion);
   const [depth, setDepth] = useState<ResearchDepth>("balanced");
+  const [domains, setDomains] = useState<ResearchDomain[]>(DOMAINS.map((d) => d.value));
   const [corpusMode, setCorpusMode] = useState(false);
   // On by default, and sent explicitly on every run.
   //
@@ -129,7 +137,11 @@ export function StartResearchForm({
   const tooShort = trimmed.length > 0 && trimmed.length < MIN_QUERY;
   const noProject = !projectsLoading && !activeId;
   const canSubmit =
-    trimmed.length >= MIN_QUERY && trimmed.length <= MAX_QUERY && Boolean(activeId) && !start.isPending;
+    trimmed.length >= MIN_QUERY &&
+    trimmed.length <= MAX_QUERY &&
+    domains.length > 0 &&
+    Boolean(activeId) &&
+    !start.isPending;
 
   // What the closed disclosure reports: departures from the default, never the default
   // itself. Silent non-default state is worse than clutter, and a badge for something
@@ -158,6 +170,7 @@ export function StartResearchForm({
         depth,
         corpus_mode: corpusMode,
         skip_plan_gate: !planGate,
+        required_domains: domains,
         // Omitted, not null, when nothing was chosen: the field's absence is what means
         // "resolve it from my settings", and sending an empty map would fail validation
         // for missing roles.
@@ -208,6 +221,46 @@ export function StartResearchForm({
           </span>
         </div>
       </div>
+
+      <fieldset className="border border-border bg-bg-elevated/30 p-3.5">
+        <legend className="px-1 font-mono text-[length:var(--text-micro)] font-semibold uppercase tracking-wider text-text-muted">
+          Research areas
+        </legend>
+        <div className="grid gap-2 sm:grid-cols-4">
+          {DOMAINS.map((domain) => {
+            const checked = domains.includes(domain.value);
+            return (
+              <label
+                key={domain.value}
+                className="flex cursor-pointer items-start gap-2 border border-border bg-bg-surface p-2.5 transition-colors hover:border-text-secondary"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) =>
+                    setDomains((current) =>
+                      e.target.checked
+                        ? [...current, domain.value]
+                        : current.filter((value) => value !== domain.value),
+                    )
+                  }
+                  className="mt-0.5 h-4 w-4 shrink-0 border-border accent-[var(--accent)]"
+                  disabled={start.isPending}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-text-primary">{domain.label}</span>
+                  <span className="block text-xs leading-relaxed text-text-muted">{domain.hint}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        {domains.length === 0 && (
+          <p className="mt-2 text-xs font-medium" style={{ color: "var(--warning)" }}>
+            Select at least one research area.
+          </p>
+        )}
+      </fieldset>
 
       {/* 2. Controls & Configuration Bar (Depth & Options) */}
       <div className="flex flex-col gap-3 border border-border bg-bg-elevated/40 p-3.5 sm:flex-row sm:items-center sm:justify-between sm:p-4">
