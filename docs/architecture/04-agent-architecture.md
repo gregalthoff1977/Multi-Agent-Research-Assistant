@@ -111,13 +111,23 @@ class ResearchTask(BaseModel):
     id: int | str = 0            # coerced to int; normalised to 1..n by the planner
     query: str                   # a concrete, independently searchable query
     rationale: str = ""
+    domain: Literal["consumer", "company", "category", "culture"] | None = None
+    module: str = ""
+    geography: str = ""
+    population: str = ""
+    time_period: str = ""
+    evidence_type: str = ""
+    preferred_source_types: list[str] = []
+    freshness: str = ""
+    minimum_source_quality: Literal["high", "medium", "exploratory"] = "medium"
+    search_queries: list[str] = []
     status: Literal["pending", "running", "passed", "failed"] = "pending"
     subtopics: list[str] = []
     include: bool = True         # False → dropped at the design gate
     source_hint: str | None = None
 
 class PlannerOutput(BaseModel):
-    tasks: list[ResearchTask]              # >= 1; capped at max_planner_tasks (default 6)
+    tasks: list[ResearchTask]              # >= 1; capped at max_planner_tasks (default 100)
     proposed_outline: list[OutlineSection] = []
 
 class EvidenceChunk(BaseModel):
@@ -210,18 +220,22 @@ there must never be followed, and that they should be reported as suspicious.
 
 Versioned constants in `research_engine/prompts.py`, never inline in node code.
 
-- **Planner** — decompose into independently searchable tasks, each with a concrete query
-  and a rationale. Seed subtopics, when given, are named as a coverage floor rather than a
-  ceiling.
+- **Planner** — designs research hierarchically through the Four Cs (Consumer, Company,
+  Category, Culture), selects the relevant modules inside them, then produces atomic
+  evidence questions with geography/population/time/evidence/source requirements. Coverage
+  determines task count; the configured cap is only a safety ceiling. Seed subtopics, when
+  given, remain a coverage floor rather than a ceiling.
 - **Executor** — gather facts only, no synthesis; every fact carries a verbatim snippet and
-  a URL; retrieved content is explicitly framed as data.
-- **Critic** — check coverage of the task, independent sources, whether the snippet actually
-  supports the claim, and recency where it matters. Must produce actionable feedback on
-  failure.
-- **Synthesizer** — use only the provided evidence; every factual claim carries `[n]`
+  a URL. It receives the full task research specification and prioritizes the source types,
+  freshness, geography, population, and quality floor the plan calls for.
+- **Critic** — checks the atomic question, evidence support, independence, recency, and
+  whether the source mix meets that task's stated source preferences and quality floor.
+  Must produce actionable feedback on failure.
+- **Synthesizer** — produces a research-only Four Cs deliverable from the supplied evidence;
+  it consolidates redundant evidence into findings, preserves gaps/counter-signals, and does
+  **not** make positioning or strategic recommendations. Every factual claim carries `[n]`
   markers mapping to evidence indices. An outline approved at the design gate *replaces* the
-  default section list, because a human chose it. It never relaxes a citation rule: an
-  outline decides what the sections are, never what may be said in them without a source.
+  default section list, but never relaxes citation or research/strategy boundaries.
 - **Chat** — answers grounded in the report and its sources; must say the report does not
   cover something rather than invent. History is replayed with correct roles.
 
@@ -300,7 +314,7 @@ the default.
 | `snippet_max_chars` | 500 | Truncation before validation; can only tighten the schema's own ceiling |
 | `topic_seeds` | empty | The planner prompt, as a coverage floor |
 | `outline_template` | unset | Resolved into the outline shown at the design gate |
-| `max_planner_tasks` | 6 | What the planner may propose unprompted; the reviewer adds more at the gate |
+| `max_planner_tasks` | 100 | Safety ceiling for a coverage-driven plan; task count is not a target |
 | `skip_plan_gate` | `True` at the engine level | Routing after the planner — see below |
 | `prompt_overrides` | empty | Declared, no consumer yet |
 

@@ -210,9 +210,29 @@ export function PlanPanel({ graph }: { graph: RunGraph }) {
                     </span>
                   )}
                 </div>
+                {(full.domain || full.module) && (
+                  <p className="mt-1 pl-5 font-mono text-[length:var(--text-micro)] uppercase tracking-wider text-text-muted">
+                    {[full.domain, full.module, full.evidence_type].filter(Boolean).join(" · ")}
+                    {full.minimum_source_quality
+                      ? ` · ${full.minimum_source_quality} source floor`
+                      : ""}
+                  </p>
+                )}
                 {full.rationale && (
                   <p className="mt-1 pl-5 text-xs leading-relaxed text-text-secondary">
                     {full.rationale}
+                  </p>
+                )}
+                {(full.geography || full.population || full.time_period) && (
+                  <p className="mt-1 pl-5 text-xs text-text-muted">
+                    {[full.geography, full.population, full.time_period]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                )}
+                {(full.preferred_source_types?.length ?? 0) > 0 && (
+                  <p className="mt-1 pl-5 text-xs text-text-muted">
+                    Prefer: {full.preferred_source_types?.join(" · ")}
                   </p>
                 )}
                 {full.subtopics?.length > 0 && (

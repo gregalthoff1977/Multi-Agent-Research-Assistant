@@ -414,6 +414,17 @@ export interface PlanTask {
   id: number;
   query: string;
   rationale: string;
+  /** Four Cs research-design metadata. Optional because historical plans predate V2. */
+  domain?: "consumer" | "company" | "category" | "culture" | null;
+  module?: string;
+  geography?: string;
+  population?: string;
+  time_period?: string;
+  evidence_type?: string;
+  preferred_source_types?: string[];
+  freshness?: string;
+  minimum_source_quality?: "high" | "medium" | "exploratory";
+  search_queries?: string[];
   subtopics: string[];
   /** False drops this task from the run. The gate filters on it before the executor. */
   include: boolean;

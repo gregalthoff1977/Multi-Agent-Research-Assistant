@@ -14,12 +14,26 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from research_engine.runconfig import get_run_config
 
 TaskStatus = Literal["pending", "running", "passed", "failed"]
+ResearchDomain = Literal["consumer", "company", "category", "culture"]
+SourceQualityFloor = Literal["high", "medium", "exploratory"]
 
 
 class ResearchTask(BaseModel):
     id: int | str = 0
     query: str = Field(min_length=3, description="A concrete, independently searchable query")
     rationale: str = ""
+    # Four Cs research-design metadata. Defaults keep older persisted plans/checkpoints
+    # readable while new planner output is required by the prompt to populate them.
+    domain: ResearchDomain | None = None
+    module: str = ""
+    geography: str = ""
+    population: str = ""
+    time_period: str = ""
+    evidence_type: str = ""
+    preferred_source_types: list[str] = Field(default_factory=list)
+    freshness: str = ""
+    minimum_source_quality: SourceQualityFloor = "medium"
+    search_queries: list[str] = Field(default_factory=list)
     status: TaskStatus = "pending"
     # Plan gate fields (docs/07 §2, Phase 4). Absent/empty is the exact shape a task
     # had before this field existed, so a run that skips the gate is unaffected.

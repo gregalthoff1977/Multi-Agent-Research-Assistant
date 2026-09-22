@@ -748,7 +748,12 @@ async def _research_one(state: AgentState, task: dict, guard: _BudgetGuard) -> d
     model = get_llm("executor").bind_tools(EXECUTOR_TOOLS + [submit_evidence])
     messages: list = [
         SystemMessage(content=prompts.EXECUTOR_PROMPT),
-        HumanMessage(content=f"Task {task['id']}: {task['query']}"),
+        HumanMessage(
+            content=(
+                f"Task {task['id']}: {task['query']}\n\n"
+                f"Research specification:\n{json.dumps(task, indent=2)}"
+            )
+        ),
     ]
     if feedback:
         messages.append(HumanMessage(content=f"Previous attempt insufficient. Fix: {feedback}"))
@@ -1095,8 +1100,12 @@ async def _criticize_one(
     messages = [
         SystemMessage(content=prompts.CRITIC_PROMPT_V2),
         HumanMessage(
-            content=f"Task: {task['query']}\n\n<untrusted_web_content>\n"
-            f"{json.dumps(task_evidence, indent=2)}\n</untrusted_web_content>"
+            content=(
+                "Research task specification:\n"
+                f"{json.dumps(task, indent=2)}\n\n"
+                "<untrusted_web_content>\n"
+                f"{json.dumps(task_evidence, indent=2)}\n</untrusted_web_content>"
+            )
         ),
     ]
     parsed, cost, i, o = await _structured("critic", messages, CriticVerdict)
@@ -1538,11 +1547,13 @@ async def synthesizer_node(state: AgentState) -> dict:
     # eight different claims per report.
     sources, seen = _number_sources(state.get("evidence", []))
 
+    tasks_by_id = {str(t.get("id")): t for t in (state.get("tasks") or [])}
     numbered_evidence = [
         {
             "n": seen.get(e.get("source_url", ""), 0),
             "snippet": e.get("snippet", ""),
             "url": e.get("source_url", ""),
+            "task_id": str(e.get("task_id", "")),
         }
         for e in state.get("evidence", [])
     ]
@@ -1554,7 +1565,12 @@ async def synthesizer_node(state: AgentState) -> dict:
         # drifts past the verbatim text, and both this graph's fidelity check and the
         # eval judge rule on the snippet alone (measured as the residual NO class in
         # the second Ollama eval). What can be cited is exactly what is shown.
-        evidence_lines.append(f'[{ev["n"]}] Snippet: "{ev["snippet"]}"')
+        task = tasks_by_id.get(ev["task_id"], {})
+        domain = task.get("domain") or "unclassified"
+        module = task.get("module") or "unclassified"
+        evidence_lines.append(
+            f'[{ev["n"]}] Domain: {domain} | Module: {module} | Snippet: "{ev["snippet"]}"'
+        )
         evidence_lines.append(f"    Source: {ev['url']}")
         evidence_lines.append("")  # blank separator
     evidence_text = "Evidence for citation:\n" + "\n".join(evidence_lines)
@@ -1589,9 +1605,9 @@ async def synthesizer_node(state: AgentState) -> dict:
             HumanMessage(
                 content=messages[1].content
                 + "\n\nThe previous synthesis was materially incomplete. Produce the full "
-                "report now. Substantially represent the useful evidence breadth and aim for "
-                "20–30 distinct evidence-backed findings when supported. Do not return a "
-                "brief summary."
+                "research report now. Substantially represent the useful evidence breadth; "
+                "consolidate duplication into distinct findings and remain research-only. "
+                "Do not return a brief summary."
             ),
         ]
         retry_resp = await model.ainvoke(retry_messages)

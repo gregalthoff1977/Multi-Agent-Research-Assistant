@@ -145,8 +145,36 @@ class _ScriptedModel(FakeMessagesListChatModel):
             content = json.dumps(
                 {
                     "tasks": [
-                        {"id": 1, "query": "background and definitions", "rationale": "context"},
-                        {"id": 2, "query": "current state and data", "rationale": "evidence"},
+                        {
+                            "id": 1,
+                            "domain": "category",
+                            "module": "Definition",
+                            "query": "background and definitions",
+                            "rationale": "context",
+                            "geography": "not specified",
+                            "population": "category",
+                            "time_period": "current",
+                            "evidence_type": "category definition",
+                            "preferred_source_types": ["industry association", "primary source"],
+                            "freshness": "current where available",
+                            "minimum_source_quality": "medium",
+                            "search_queries": ["background and definitions"],
+                        },
+                        {
+                            "id": 2,
+                            "domain": "category",
+                            "module": "Change",
+                            "query": "current state and data",
+                            "rationale": "evidence",
+                            "geography": "not specified",
+                            "population": "category",
+                            "time_period": "current",
+                            "evidence_type": "market evidence",
+                            "preferred_source_types": ["industry association", "measured data"],
+                            "freshness": "current",
+                            "minimum_source_quality": "high",
+                            "search_queries": ["current state and data"],
+                        },
                     ]
                 }
             )
