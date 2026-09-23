@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 
 from app.schemas.research import SourceSchema
-from research_engine.graph import synthesizer_node
+from research_engine.graph import _citable_evidence, synthesizer_node
 from research_engine.schemas import Source
 
 
@@ -111,6 +111,25 @@ async def test_evidence_without_a_url_is_skipped():
     assert len(sources) == 1
     assert sources[0]["url"] == "https://a.com"
 
+
+def test_unattested_evidence_is_quarantined_from_reasoning():
+    good = _evidence("https://a.com", "A real quote.")
+    rejected = _evidence("https://b.com", "")
+    rejected["snippet_unverified"] = True
+    empty = _evidence("https://c.com", "")
+
+    assert _citable_evidence([good, rejected, empty]) == [good]
+
+
+@pytest.mark.asyncio
+async def test_unattested_source_never_enters_synthesis_numbering():
+    rejected = _evidence("https://bad.com", "")
+    rejected["snippet_unverified"] = True
+    sources = await _sources_for(
+        [rejected, _evidence("https://good.com", "A quote the executor actually saw.")]
+    )
+
+    assert [source["url"] for source in sources] == ["https://good.com"]
 
 def test_source_schema_defaults_to_an_empty_snippet_list():
     """Old `sessions.sources` rows carry no `snippets` key and must still validate.
