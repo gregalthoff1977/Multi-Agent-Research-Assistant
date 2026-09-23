@@ -232,7 +232,10 @@ Versioned constants in `research_engine/prompts.py`, never inline in node code.
   Seed subtopics remain a coverage floor rather than a ceiling.
 - **Executor** — gather facts only, no synthesis; every fact carries a verbatim snippet and
   a URL. It receives the full task research specification and prioritizes the source types,
-  freshness, geography, population, and quality floor the plan calls for.
+  freshness, geography, population, and quality floor the plan calls for. Snippets that
+  fail attestation are retained in the evidence ledger as `UNATTESTED` for auditability,
+  but are quarantined from critic reasoning, contradiction detection, synthesis, and
+  claim-evidence links.
 - **Critic** — checks the atomic question, evidence support, independence, recency, and
   whether the source mix meets that task's stated source preferences and quality floor.
   Must produce actionable feedback on failure.
