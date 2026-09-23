@@ -575,6 +575,27 @@ def verify_evidence_snippets(
     return fabricated
 
 
+def _citable_evidence(evidence: list[dict] | None) -> list[dict]:
+    """Evidence allowed to influence critics, contradictions, or synthesis.
+
+    The executor preserves rejected chunks so the provenance UI can show what failed.
+    Preservation is not permission to reason from them. A quotation that failed
+    attestation is blanked and marked snippet_unverified; it must remain visible in
+    the evidence ledger while being quarantined from every downstream reasoning path.
+
+    Non-empty unchecked chunks remain usable for fake-mode and historical checkpoints,
+    where snippet attestation was never run. This firewall rejects a negative verdict,
+    not the absence of a verdict.
+    """
+    return [
+        e
+        for e in (evidence or [])
+        if isinstance(e, dict)
+        and (e.get("source_url") or "").strip()
+        and (e.get("snippet") or "").strip()
+        and not e.get("snippet_unverified")
+    ]
+
 def _task_key(task: dict) -> str:
     """Verdicts and retries are keyed by string — the checkpointer stores state as JSON."""
     return str(task.get("id"))
@@ -1158,7 +1179,9 @@ async def _criticize_one(
     state: AgentState, task: dict
 ) -> tuple[str, CriticVerdict, float, int, int]:
     task_evidence = [
-        e for e in state.get("evidence", []) if str(e.get("task_id")) == _task_key(task)
+        e
+        for e in _citable_evidence(state.get("evidence", []))
+        if str(e.get("task_id")) == _task_key(task)
     ]
 
     # A configured floor (docs/07 §2, Phase 3; 0 = no floor, today's behaviour) fails
@@ -1527,7 +1550,9 @@ async def contradiction_detector_node(state: AgentState) -> dict:
     in the agent log) — a fabricated conflict is the worst possible error here.
     """
     sid = state["session_id"]
-    by_source = contradictions.group_snippets_by_source(state.get("evidence", []))
+    by_source = contradictions.group_snippets_by_source(
+        _citable_evidence(state.get("evidence", []))
+    )
     if len(by_source) < 2:
         return {"contradictions": []}
 
@@ -1622,7 +1647,8 @@ async def synthesizer_node(state: AgentState) -> dict:
     # verbatim quote for each; retaining only one meant a citation chip could display text
     # unrelated to the claim it was attached to — the same source is cited for roughly
     # eight different claims per report.
-    sources, seen = _number_sources(state.get("evidence", []))
+    citable_evidence = _citable_evidence(state.get("evidence", []))
+    sources, seen = _number_sources(citable_evidence)
 
     tasks_by_id = {str(t.get("id")): t for t in (state.get("tasks") or [])}
     numbered_evidence = [
@@ -1632,7 +1658,7 @@ async def synthesizer_node(state: AgentState) -> dict:
             "url": e.get("source_url", ""),
             "task_id": str(e.get("task_id", "")),
         }
-        for e in state.get("evidence", [])
+        for e in citable_evidence
     ]
 
     evidence_lines: list[str] = []
@@ -1943,7 +1969,7 @@ def _no_research_reason(state: AgentState) -> str | None:
             "no research tasks were selected — every subtopic was excluded at the design "
             "gate, so nothing was searched. Start a new run and keep at least one subtopic."
         )
-    if not state.get("evidence"):
+    if not _citable_evidence(state.get("evidence", [])):
         seen = state.get("sources_seen", 0)
         if seen:
             return (
@@ -1992,7 +2018,7 @@ def route_after_critic(state: AgentState) -> str:
     # difference between "we could not answer this" and a fluent report sourced from the
     # synthesizer's training data — the latter is what the citation-repair pass turns into
     # an artifact that *looks* verified while resolving to nothing.
-    if not state.get("evidence"):
+    if not _citable_evidence(state.get("evidence", [])):
         return "failer"
     return "contradiction_detector"
 
