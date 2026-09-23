@@ -239,7 +239,7 @@ class EvidenceWrite:
     """What was persisted, and enough of the index to link claims and contradictions."""
 
     sources_by_url: dict[str, uuid.UUID]
-    #: citation_index → all evidence rows from that source. `[n]` resolves through these.
+    #: citation_index → citable evidence rows from that source. UNATTESTED rows never resolve claims.
     evidence_by_index: dict[int, list[uuid.UUID]]
     #: (source_id, quoted text) → every evidence row carrying it. A list, because a
     #: contradiction may only refine to a UNIQUE match.
@@ -334,9 +334,9 @@ async def record_evidence(
         # by the original run. Reuse an existing row with the same source, task, and
         # snippet rather than inserting the same evidence again on every revision.
         task_id = str(item["task_id"]) if item.get("task_id") is not None else None
-        existing_eid = (
+        existing_row = (
             await db.execute(
-                select(Evidence.id)
+                select(Evidence.id, Evidence.provenance_state)
                 .where(
                     Evidence.run_id == run.id,
                     Evidence.source_id == source_id,
@@ -347,16 +347,21 @@ async def record_evidence(
                 .order_by(Evidence.sequence)
                 .limit(1)
             )
-        ).scalar_one_or_none()
+        ).first()
 
         idx = index_by_url.get(norm)
 
-        if existing_eid is not None:
-            if idx is not None:
-                evidence_by_index.setdefault(idx, []).append(existing_eid)
-            evidence_by_quote.setdefault(
-                (source_id, snippet.strip()[:500]), []
-            ).append(existing_eid)
+        if existing_row is not None:
+            existing_eid, existing_provenance = existing_row
+            # UNATTESTED rows stay visible in the evidence ledger but cannot become
+            # claim support or contradiction anchors merely because another attested
+            # snippet from the same source earned that source a citation number.
+            if existing_provenance != "UNATTESTED" and snippet.strip():
+                if idx is not None:
+                    evidence_by_index.setdefault(idx, []).append(existing_eid)
+                evidence_by_quote.setdefault(
+                    (source_id, snippet.strip()[:500]), []
+                ).append(existing_eid)
             continue
 
         sequence = base + offset
@@ -406,9 +411,10 @@ async def record_evidence(
         )
         watermark = sequence
         idx = index_by_url.get(norm)
-        if idx is not None:
-            evidence_by_index.setdefault(idx, []).append(eid)
-        evidence_by_quote.setdefault((source_id, snippet.strip()[:500]), []).append(eid)
+        if provenance_state != "UNATTESTED" and snippet.strip():
+            if idx is not None:
+                evidence_by_index.setdefault(idx, []).append(eid)
+            evidence_by_quote.setdefault((source_id, snippet.strip()[:500]), []).append(eid)
 
     await db.flush()
     return EvidenceWrite(
@@ -542,7 +548,12 @@ async def _evidence_by_citation_index(db: AsyncSession, run_id) -> dict[int, lis
         await db.execute(
             select(Source.citation_index, Evidence.id)
             .join(Evidence, Evidence.source_id == Source.id)
-            .where(Source.run_id == run_id, Source.citation_index.isnot(None))
+            .where(
+                Source.run_id == run_id,
+                Source.citation_index.isnot(None),
+                Evidence.provenance_state != "UNATTESTED",
+                Evidence.snippet != "",
+            )
             .order_by(Evidence.sequence.asc(), Evidence.id.asc())
         )
     ).all()
