@@ -305,6 +305,50 @@ async def test_a_blanked_snippet_is_recorded_unattested_not_unchecked(db, owner)
     assert row.attestation_run_at is not None, "the check ran — only its target is unknown"
 
 
+async def test_unattested_evidence_never_becomes_claim_support(db, owner):
+    """A rejected quote may be persisted for audit, but a citation to the same source
+    must resolve only to citable evidence from that source."""
+    state = await drive_lifecycle(db, owner, approve=False)
+    run = state["run"]
+
+    url = "https://example.invalid/mixed-source"
+    verified = dict(EVIDENCE[0])
+    verified["source_url"] = url
+    verified["snippet"] = "A verified fact from the fetched page."
+    verified["attestation_grade"] = "FETCHED_BODY"
+
+    rejected = dict(EVIDENCE[1])
+    rejected["source_url"] = url
+    rejected["snippet"] = ""
+    rejected["snippet_unverified"] = True
+
+    written = await run_lifecycle.record_evidence(
+        db,
+        run,
+        evidence=[verified, rejected],
+        numbered_sources=[{"index": 3, "url": url, "title": "Mixed source"}],
+    )
+    revision = await run_lifecycle.record_revision(
+        db,
+        run,
+        report_markdown="The verified fact is established [3].",
+        evidence_index=written,
+    )
+    await db.commit()
+
+    assert len(written.evidence_by_index[3]) == 1
+    links = (
+        await db.execute(
+            select(ClaimEvidenceLink)
+            .join(Claim, Claim.id == ClaimEvidenceLink.claim_id)
+            .where(Claim.revision_id == revision.revision.id)
+        )
+    ).scalars().all()
+    assert len(links) == 1
+    linked = await db.get(Evidence, links[0].evidence_id)
+    assert linked is not None
+    assert linked.provenance_state == "ATTESTED"
+
 async def test_a_verified_corpus_item_is_graded_corpus_document(db, owner):
     """`read_webpage` handles `corpus://` the same as any other fetch, so the graph stamps
     it `FETCHED_BODY` — `record_evidence` must relabel that to the schema's own vocabulary
