@@ -249,7 +249,13 @@ async def persist_outcome(
     report = outcome.report
     if report:
         result = await run_lifecycle.record_revision(
-            db, run, report_markdown=report, evidence_index=written
+            db,
+            run,
+            report_markdown=report,
+            evidence_index=written,
+            findings=(
+                values.get("findings") if evidence_outcome == "READ" and not run.demo else None
+            ),
         )
         revision_version = result.revision.version
         claim_count, link_count = result.claim_count, result.link_count

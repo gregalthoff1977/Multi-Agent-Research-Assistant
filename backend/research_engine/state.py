@@ -53,6 +53,8 @@ class AgentState(TypedDict, total=False):
     # Conflicting-claim pairs found by the contradiction detector (docs/12 M11).
     # Surfaced in the report block and the gate count; never auto-resolved.
     contradictions: list[dict[str, Any]]
+    # Structured, attested findings for this draft; recomputed on each rework.
+    findings: list[dict[str, Any]]
     human_feedback: str | None
     rework_count: int
     approved: bool | None

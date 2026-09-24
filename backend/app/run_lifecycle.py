@@ -265,10 +265,12 @@ async def record_evidence(
     """
     index_by_url: dict[str, int] = {}
     title_by_url: dict[str, str] = {}
+    cited_url_by_norm: dict[str, str] = {}
     for entry in numbered_sources or []:
         if not isinstance(entry, dict) or not entry.get("url"):
             continue
         norm = _norm_url(entry["url"])
+        cited_url_by_norm.setdefault(norm, entry["url"])
         if isinstance(entry.get("index"), int):
             index_by_url[norm] = entry["index"]
         if entry.get("title"):
@@ -307,7 +309,7 @@ async def record_evidence(
                 Source(
                     id=source_id,
                     run_id=run.id,
-                    url=url,
+                    url=cited_url_by_norm.get(norm, url),
                     normalized_url=norm,
                     title=title_by_url.get(norm) or item.get("source_title") or None,
                     kind="CORPUS" if url.startswith("corpus://") else "WEB",
@@ -362,9 +364,7 @@ async def record_evidence(
                     bucket = evidence_by_index.setdefault(idx, [])
                     if existing_eid not in bucket:
                         bucket.append(existing_eid)
-                quote_bucket = evidence_by_quote.setdefault(
-                    (source_id, snippet.strip()[:500]), []
-                )
+                quote_bucket = evidence_by_quote.setdefault((source_id, snippet.strip()[:500]), [])
                 if existing_eid not in quote_bucket:
                     quote_bucket.append(existing_eid)
             continue
@@ -447,7 +447,7 @@ async def record_evidence(
         + len(
             {
                 row_id
-                for row_id, in (
+                for (row_id,) in (
                     await db.execute(
                         select(Evidence.id).where(
                             Evidence.run_id == run.id,
@@ -476,6 +476,7 @@ async def record_revision(
     *,
     report_markdown: str,
     evidence_index: EvidenceWrite | None = None,
+    findings: list[dict] | None = None,
 ) -> RevisionWrite:
     """Append the next immutable revision, with its claims and their evidence links.
 
@@ -524,6 +525,7 @@ async def record_revision(
                 generated_at=datetime.now(UTC).isoformat(),
             ),
         ).model_dump(mode="json"),
+        findings=findings,
         evidence_watermark=watermark,
     )
     db.add(revision)

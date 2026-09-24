@@ -22,6 +22,7 @@ from research_engine.bundle import (
     content_hash,
     serialize,
 )
+from research_engine.findings import evidence_id
 from research_engine.verify_bundle import (
     format_json,
     format_text,
@@ -116,6 +117,22 @@ def test_round_trip():
     result = verify(parsed)
     assert result.passed, format_text(result)
     assert all(c.passed for c in result.checks)
+
+
+def test_finding_links_are_verified_in_the_same_bundle_on_both_hosts():
+    finding = {
+        "finding": _EVIDENCE[0]["snippet"],
+        "confidence": "medium",
+        "status": "qualified",
+        "source_urls": [_EVIDENCE[0]["source_url"]],
+        "evidence_ids": [evidence_id(_EVIDENCE[0]["source_url"], _EVIDENCE[0]["snippet"])],
+    }
+    bundle = _bundle(findings=[finding])
+    assert verify(BundleManifest.model_validate_json(serialize(bundle))).passed
+    bundle.findings[0]["evidence_ids"] = ["0" * 64]
+    bundle.bundle_hash = compute_bundle_hash(bundle)
+    check = next(c for c in verify(bundle).checks if c.name == "finding_evidence_linkage")
+    assert not check.passed
 
 
 # ── 2. Tamper detection — snippet ─────────────────────────────────────────────────

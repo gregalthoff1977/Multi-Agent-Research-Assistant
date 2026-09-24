@@ -32,7 +32,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field, model_validator
 
-from research_engine import claims, contradictions, outlines, prompts
+from research_engine import claims, contradictions, findings, outlines, prompts
 from research_engine.events import emit
 from research_engine.llm_factory import (
     estimate_cost,
@@ -210,9 +210,13 @@ def _acc(state: AgentState, cost: float, i: int, o: int) -> dict:
 _FOUR_C_DOMAINS = {"consumer", "company", "category", "culture"}
 
 
-def _planner_coverage_issues(required_domains: tuple[str, ...] | list[str], tasks: list[dict]) -> list[str]:
+def _planner_coverage_issues(
+    required_domains: tuple[str, ...] | list[str], tasks: list[dict]
+) -> list[str]:
     """Deterministic checks for the researcher's explicit Four Cs contract."""
-    requested = {str(d).lower() for d in (required_domains or ()) if str(d).lower() in _FOUR_C_DOMAINS}
+    requested = {
+        str(d).lower() for d in (required_domains or ()) if str(d).lower() in _FOUR_C_DOMAINS
+    }
     if not requested:
         return []
 
@@ -243,6 +247,7 @@ def _planner_coverage_issues(required_domains: tuple[str, ...] | list[str], task
         issues.append("insufficient module breadth: " + ", ".join(thin))
 
     return issues
+
 
 async def planner_node(state: AgentState) -> dict:
     sid = state["session_id"]
@@ -595,6 +600,7 @@ def _citable_evidence(evidence: list[dict] | None) -> list[dict]:
         and (e.get("snippet") or "").strip()
         and not e.get("snippet_unverified")
     ]
+
 
 def _task_key(task: dict) -> str:
     """Verdicts and retries are keyed by string — the checkpointer stores state as JSON."""
@@ -1630,6 +1636,38 @@ def _number_sources(evidence: list[dict]) -> tuple[list[dict], dict[str, int]]:
     return sources, seen
 
 
+def _apply_finding_confidence(draft: str, assessed: list[dict], seen: dict[str, int]) -> str:
+    """Remove claims without a suitable finding and qualify claims with limited support.
+
+    This runs after citation fidelity. Multiple quotes from the same URL may have
+    different assessments; take the weakest instead of allowing a stronger unrelated
+    quote on that page to promote the claim. The model's content stays in place so its
+    exact citation is still auditable.
+    """
+    strength = {"high": 2, "medium": 1, "low": 0}
+    by_index: dict[int, list[dict]] = {}
+    for finding in assessed:
+        if finding["status"] == "research_gap":
+            continue
+        for url in finding["source_urls"]:
+            if url in seen:
+                by_index.setdefault(seen[url], []).append(finding)
+    for claim in _cited_claims(draft):
+        indices = claims.extract_citations(claim)
+        support = [f for n in indices for f in by_index.get(n, [])]
+        if not support:
+            draft = draft.replace(claim, "", 1)
+            continue
+        if min(strength[f["confidence"]] for f in support) < 2:
+            marker = (
+                "Emerging cultural signal: "
+                if all(f["status"] == "emerging_signal" for f in support)
+                else "Qualified finding: "
+            )
+            draft = draft.replace(claim, marker + claim, 1)
+    return draft
+
+
 async def synthesizer_node(state: AgentState) -> dict:
     sid = state["session_id"]
     await emit(
@@ -1648,9 +1686,35 @@ async def synthesizer_node(state: AgentState) -> dict:
     # unrelated to the claim it was attached to — the same source is cited for roughly
     # eight different claims per report.
     citable_evidence = _citable_evidence(state.get("evidence", []))
+    if state.get("tasks") and get_run_config().llm_mode != "fake":
+        citable_evidence = [e for e in citable_evidence if e.get("attestation_grade")]
+        # SQL stores one Source per normalized URL. Give every finding the exact URL
+        # that source numbering will persist, even when two tasks used URL variants.
+        first_url: dict[str, str] = {}
+        citable_evidence = [
+            {**e, "source_url": first_url.setdefault(_norm_url(e["source_url"]), e["source_url"])}
+            for e in citable_evidence
+        ]
+    # Real-run retrieval stamps attestation on every verified chunk. Historical and
+    # scripted checkpoints can lack it; they stay in the source ledger for compatibility
+    # but never acquire a finding simply from having a nonempty snippet.
+    assessed = findings.build_findings(
+        citable_evidence, state.get("tasks") or [], state.get("contradictions") or []
+    )
+    if state.get("tasks") and get_run_config().llm_mode != "fake":
+        citable_ids = {
+            eid
+            for finding in assessed
+            if finding["status"] != "research_gap"
+            for eid in finding["evidence_ids"]
+        }
+        citable_evidence = [
+            e
+            for e in citable_evidence
+            if findings.evidence_id(e["source_url"], e["snippet"].strip()) in citable_ids
+        ]
     sources, seen = _number_sources(citable_evidence)
 
-    tasks_by_id = {str(t.get("id")): t for t in (state.get("tasks") or [])}
     numbered_evidence = [
         {
             "n": seen.get(e.get("source_url", ""), 0),
@@ -1662,21 +1726,32 @@ async def synthesizer_node(state: AgentState) -> dict:
     ]
 
     evidence_lines: list[str] = []
-    for ev in numbered_evidence:
-        # Snippet only — no key_fact. The executor's key_fact is a paraphrase, and a
-        # small synthesizer model that sees both writes from the paraphrase: the claim
-        # drifts past the verbatim text, and both this graph's fidelity check and the
-        # eval judge rule on the snippet alone (measured as the residual NO class in
-        # the second Ollama eval). What can be cited is exactly what is shown.
-        task = tasks_by_id.get(ev["task_id"], {})
-        domain = task.get("domain") or "unclassified"
-        module = task.get("module") or "unclassified"
-        evidence_lines.append(
-            f'[{ev["n"]}] Domain: {domain} | Module: {module} | Snippet: "{ev["snippet"]}"'
+    for finding in assessed:
+        if finding["status"] == "research_gap":
+            continue
+        markers = "".join(f"[{seen[u]}]" for u in finding["source_urls"] if u in seen)
+        if not markers:
+            continue
+        evidence_lines.extend(
+            [
+                f"{markers} Domain: {finding['domain']} | Module: {finding['module']} "
+                f"| {finding['status']} ({finding['confidence']} confidence) "
+                f'| Role: {finding["evidence_role"]} | Snippet: "{finding["finding"]}"',
+                f"    Sources: {', '.join(finding['source_urls'])}",
+                f"    Caveats: {'; '.join(finding['caveats']) or 'none'}",
+                "",
+            ]
         )
-        evidence_lines.append(f"    Source: {ev['url']}")
-        evidence_lines.append("")  # blank separator
-    evidence_text = "Evidence for citation:\n" + "\n".join(evidence_lines)
+    evidence_text = "Assessed findings for citation:\n" + "\n".join(evidence_lines)
+    gaps = [f for f in assessed if f["status"] == "research_gap"]
+    if gaps:
+        evidence_text += "\nResearch gaps (do not cite as factual findings):\n" + "\n".join(
+            f"- {f['domain']}/{f['module']}: evidence is unsuitable to establish "
+            f"the task (task {f['task_id']})."
+            for f in gaps
+        )
+    if not evidence_lines:
+        evidence_text += "No attested, suitable findings. State the research gap; do not report factual findings."
 
     messages = [
         SystemMessage(content=prompts.SYNTHESIZER_PROMPT_V2),
@@ -1787,6 +1862,11 @@ async def synthesizer_node(state: AgentState) -> dict:
     # the repair pass so a repair-introduced drift is caught too. Unsupported claims lose
     # their markers and carry a visible note rather than shipping a hollow citation.
     draft, vcost, vi, vo = await _verify_citation_fidelity(sid, draft, sources)
+    # An LLM can still phrase a cited, weakly supported observation as an established
+    # fact. Mark its actual support level after citation verification, leaving the
+    # original claim and marker intact for independent checking.
+    if get_run_config().llm_mode != "fake":
+        draft = _apply_finding_confidence(draft, assessed, seen)
     logger.info(
         "synthesis_verified_draft",
         session_id=sid,
@@ -1834,6 +1914,7 @@ async def synthesizer_node(state: AgentState) -> dict:
     return {
         "draft_report": draft,
         "sources": sources,
+        "findings": assessed,
         "human_feedback": None,
         **_acc(state, cost, i, o),
     }

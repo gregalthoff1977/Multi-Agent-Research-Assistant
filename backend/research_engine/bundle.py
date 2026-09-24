@@ -112,6 +112,9 @@ class BundleManifest(BaseModel):
     evidence: list[SnippetRecord] = Field(default_factory=list)
     sources: list[dict] = Field(default_factory=list)
     contradictions: list[dict] = Field(default_factory=list)
+    # Optional on version-1 bundles for backward compatibility; historical reports
+    # predate assessment and must not be backfilled as if it happened at research time.
+    findings: list[dict] | None = None
 
     models: dict[str, str] = Field(default_factory=dict)
     cost_usd: float = 0.0
@@ -143,6 +146,9 @@ def compute_bundle_hash(bundle: BundleManifest) -> str:
     """
     d = bundle.model_dump()
     d["bundle_hash"] = ""
+    if d.get("findings") is None:
+        # Version-1 manifests written before the findings field hash exactly as before.
+        d.pop("findings", None)
     canonical = json.dumps(d, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -169,6 +175,7 @@ def assemble(
     evidence: list[dict],
     sources: list[dict],
     contradictions: list[dict] | None = None,
+    findings: list[dict] | None = None,
     models: dict[str, str] | None = None,
     cost_usd: float = 0.0,
     tokens_input: int = 0,
@@ -221,6 +228,7 @@ def assemble(
         evidence=snippet_records,
         sources=sources,
         contradictions=contradictions or [],
+        findings=findings,
         models=models or {},
         cost_usd=cost_usd,
         tokens_input=tokens_input,
@@ -238,7 +246,10 @@ def assemble(
 
 def serialize(bundle: BundleManifest) -> str:
     """Canonical JSON for storage/export — readable, deterministic key order."""
-    return json.dumps(bundle.model_dump(), sort_keys=True, indent=2, ensure_ascii=False) + "\n"
+    payload = bundle.model_dump()
+    if payload.get("findings") is None:
+        payload.pop("findings", None)
+    return json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
 
 
 #: Prepended to the report text of any demo export (docs/17 §6.2). Markdown, so it

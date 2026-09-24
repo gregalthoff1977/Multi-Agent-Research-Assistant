@@ -78,6 +78,7 @@ class AgentState(TypedDict, total=False):
     draft_report: str | None
     sources: list[dict]
     contradictions: list[dict]
+    findings: list[dict]        # assessed evidence for this draft; rebuilt on rework
     human_feedback: str | None
     rework_count: int
     approved: bool | None
@@ -239,11 +240,27 @@ Versioned constants in `research_engine/prompts.py`, never inline in node code.
 - **Critic** — checks the atomic question, evidence support, independence, recency, and
   whether the source mix meets that task's stated source preferences and quality floor.
   Must produce actionable feedback on failure.
-- **Synthesizer** — produces a research-only Four Cs deliverable from the supplied evidence;
-  it consolidates redundant evidence into findings, preserves gaps/counter-signals, and does
+- **Finding assessment** — before synthesis, checks each attested quotation against its
+  task's claim type. Source class, suitability, attestation grade, geographic and population
+  fit, method description, independent publisher count, confidence (`high`/`medium`/`low`),
+  and caveats travel together in structured findings. Unknown publication date or methodology
+  remains unverified. Repeated commercial claims and verbatim republications do not create
+  independent measured evidence. Different wording is not proof of independent research.
+  Source identification uses conservative host rules, so unfamiliar publishers can remain
+  `unknown`; review the original evidence for borderline cases. A single primary brand
+  source can establish its own product fact, but cannot establish audience behavior.
+  Social occurrences can become emerging cultural signals without implying prevalence.
+- **Synthesizer** — produces a research-only Four Cs deliverable from assessed findings;
+  it preserves gaps/counter-signals and does
   **not** make positioning or strategic recommendations. Every factual claim carries `[n]`
   markers mapping to evidence indices. An outline approved at the design gate *replaces* the
   default section list, but never relaxes citation or research/strategy boundaries.
+  In real runs, only attested findings other than research gaps enter the numbered source
+  list. After citation verification, claims without an eligible finding are removed;
+  claims supported by limited findings are visibly qualified. Direct contradictions remain
+  separate from coexisting research patterns; the engine draws no strategic implication.
+  Findings are stored on each immutable revision and included in native run detail and
+  bundle exports. Historical revisions have `null`, not a reconstructed assessment.
 - **Chat** — answers grounded in the report and its sources; must say the report does not
   cover something rather than invent. History is replayed with correct roles.
 

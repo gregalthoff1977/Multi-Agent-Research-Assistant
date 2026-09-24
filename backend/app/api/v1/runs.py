@@ -284,6 +284,7 @@ async def project_run(db: AsyncSession, run: ResearchRun) -> dict:
                 # surface, not a dependency: `report_markdown` above remains what every
                 # existing client — and the frontend's citation renderer — reads.
                 "report_document": r.report_document,
+                **({"findings": r.findings} if r.findings is not None else {}),
                 "evidence_watermark": r.evidence_watermark,
                 "created_at": r.created_at.isoformat(),
             }

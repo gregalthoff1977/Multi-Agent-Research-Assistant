@@ -43,6 +43,8 @@ The root object is a `BundleManifest` at version `1`.
 
   "contradictions": [],
 
+  "findings": null,
+
   "models": { "planner": "provider:model", "executor": "provider:model" },
 
   "cost_usd": 0.045,
@@ -75,11 +77,12 @@ Every hash is a SHA-256 hex digest of UTF-8 encoded text.
 
 ### 2. `bundle_hash` scope
 
-`bundle_hash` covers **all** fields including `trace` and `trace_available`, and excluding
-only itself. To recompute it:
+`bundle_hash` covers **all present** fields including `trace`, `trace_available`, and
+non-null `findings`, and excludes itself. Bundles written before finding assessment did
+not include `findings`; their hash is verified without synthesizing that field. To recompute it:
 
 1. Set `bundle_hash` to `""`.
-2. Serialise the object as JSON with **sorted keys**, `ensure_ascii=False`, and separators
+2. Omit `findings` if its value is null (legacy bundles). Serialise the object as JSON with **sorted keys**, `ensure_ascii=False`, and separators
    `(",", ":")` — no whitespace.
 3. SHA-256 the resulting UTF-8 string.
 
@@ -127,7 +130,18 @@ and teaching a reader that FAIL is normal for demos would defeat the verifier fa
 thoroughly than a missing banner. The verifier prints the provenance above its verdict
 instead.
 
-### 6. Approval-chain contract
+### 6. Finding assessments
+
+New native runs may carry `findings`, a list of objects with a quoted finding, Four Cs
+domain/module, evidence role, status (`established`, `qualified`, `emerging_signal`, or
+`research_gap`), confidence, caveats, source assessments, source URLs, and evidence IDs.
+Each evidence ID hashes `source_url + NUL + snippet` with SHA-256, so it survives evidence
+row deduplication. The offline verifier checks that every ID resolves to an exported
+evidence snippet and to the attributed URL. This verifies identity and integrity, not the
+scientific validity of the assessment. `null` means no assessment occurred for that older
+revision; it is never treated as an empty measured list.
+
+### 7. Approval-chain contract
 
 For a bundle to count as approved, `approval_chain` must contain at least one entry where
 `action == "approved"` **and** whose `draft_hash` matches `report_hash` exactly.
@@ -155,7 +169,7 @@ python -m research_engine.verify_bundle path/to/research.bundle.json
 
 Exit code `0` if valid, `1` if tampered. `--format json` emits a machine-readable result.
 
-Seven checks:
+Eight checks:
 
 1. **Schema validity** — the JSON parses and matches the version 1 manifest.
 2. **Bundle integrity** — the recomputed `bundle_hash` matches.
@@ -165,7 +179,9 @@ Seven checks:
    entry.
 6. **Claim–evidence linkage** — every cited source in a claim points to a source that has at
    least one evidence snippet behind it.
-7. **Approval-chain integrity** — a valid, linked `approved` entry exists per §6.
+7. **Finding–evidence linkage** — every exported finding references exported evidence
+   under the same URL; legacy bundles explicitly lack assessed findings.
+8. **Approval-chain integrity** — a valid, linked `approved` entry exists per §7.
 
 Demo provenance is reported alongside the verdict rather than inside the notes, because a
 demo bundle verifies perfectly well — its hashes match and its citations resolve — and would

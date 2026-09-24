@@ -23,6 +23,7 @@ Checks:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -168,6 +169,32 @@ def _check_claim_evidence_linkage(bundle: BundleManifest) -> CheckResult:
     )
 
 
+def _check_findings(bundle: BundleManifest) -> CheckResult:
+    if bundle.findings is None:
+        return CheckResult("finding_evidence_linkage", True, "Legacy bundle: no finding assessment")
+    known = {
+        hashlib.sha256(f"{e.source_url}\0{e.snippet}".encode()).hexdigest(): e.source_url
+        for e in bundle.evidence
+    }
+    gaps = []
+    for i, finding in enumerate(bundle.findings):
+        ids = finding.get("evidence_ids") or []
+        urls = finding.get("source_urls") or []
+        if (
+            not ids
+            or len(ids) != len(urls)
+            or any(known.get(eid) != url for eid, url in zip(ids, urls, strict=True))
+        ):
+            gaps.append(i)
+        if finding.get("confidence") not in {"high", "medium", "low"}:
+            gaps.append(i)
+    if gaps:
+        return CheckResult(
+            "finding_evidence_linkage", False, f"Invalid findings: {sorted(set(gaps))}"
+        )
+    return CheckResult("finding_evidence_linkage", True)
+
+
 def _check_approval_chain(bundle: BundleManifest) -> CheckResult:
     if not bundle.approval_chain:
         return CheckResult(
@@ -230,6 +257,7 @@ def verify(bundle: BundleManifest) -> VerifyResult:
         _check_evidence_integrity(bundle),
         _check_citation_resolution(bundle),
         _check_claim_evidence_linkage(bundle),
+        *([_check_findings(bundle)] if bundle.findings is not None else []),
         _check_approval_chain(bundle),
     ]
 

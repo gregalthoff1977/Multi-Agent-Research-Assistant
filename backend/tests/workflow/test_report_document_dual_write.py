@@ -21,6 +21,7 @@ from sqlalchemy import insert
 
 from app import run_lifecycle
 from app.models.project import Project
+from app.models.research import Source
 from app.models.revision import Revision
 from app.models.user import User
 from research_engine.document import ReportDocument
@@ -153,3 +154,36 @@ async def test_a_revision_predating_the_typed_view_still_works(run):
     assert revision["report_document"] is None
     assert revision["report_markdown"] == REPORT
     assert revision["report_hash"] == hashlib.sha256(REPORT.encode()).hexdigest()
+
+
+async def test_findings_are_snapshotted_per_revision_and_legacy_remains_null(run):
+    db, row = run
+    await run_lifecycle.record_revision(db, row, report_markdown=REPORT)
+    finding = {"finding": "A quoted observation", "confidence": "low", "caveats": ["Limited"]}
+    await run_lifecycle.record_revision(db, row, report_markdown=REPORT, findings=[finding])
+    await db.commit()
+    rows = (
+        (await db.execute(Revision.__table__.select().order_by(Revision.version))).mappings().all()
+    )
+    assert rows[0]["findings"] is None
+    assert rows[1]["findings"] == [finding]
+
+
+async def test_persisted_source_uses_the_url_that_numbered_findings_cite(run):
+    db, row = run
+    await run_lifecycle.record_evidence(
+        db,
+        row,
+        evidence=[
+            {"task_id": 1, "source_url": "http://example.com/", "snippet": ""},
+            {
+                "task_id": 1,
+                "source_url": "https://example.com",
+                "snippet": "Verified text.",
+                "attestation_grade": "FETCHED_BODY",
+            },
+        ],
+        numbered_sources=[{"index": 1, "url": "https://example.com", "title": "Example"}],
+    )
+    source = (await db.execute(Source.__table__.select())).mappings().one()
+    assert source["url"] == "https://example.com"
