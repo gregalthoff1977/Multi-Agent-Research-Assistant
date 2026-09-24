@@ -19,7 +19,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import logging
 import re
 import sys
 import uuid
@@ -190,12 +189,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
-    # --json is a machine-readable stdout contract. structlog may be configured by a
-    # host/test process to render INFO diagnostics to stdout, so silence INFO logging for
-    # this invocation; errors still go to stderr and the JSON document remains parseable.
-    previous_disable = logging.root.manager.disable
+    # --json is a machine-readable stdout contract. structlog's configured sink may
+    # write diagnostics directly to stdout, bypassing stdlib logging levels, so capture
+    # pipeline stdout for this invocation and discard it. The JSON document below is the
+    # CLI's only stdout output in JSON mode.
+    original_stdout = sys.stdout
+    captured_stdout = None
     if args.json:
-        logging.disable(logging.INFO)
+        import io
+
+        captured_stdout = io.StringIO()
+        sys.stdout = captured_stdout
 
     try:
         outcome, session_id = asyncio.run(_drive(args))
@@ -209,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.json:
-        logging.disable(previous_disable)
+        sys.stdout = original_stdout
         payload = {
             "status": outcome.status,
             "report": outcome.report,
