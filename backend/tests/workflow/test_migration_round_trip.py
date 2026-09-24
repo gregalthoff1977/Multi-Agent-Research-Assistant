@@ -288,8 +288,8 @@ def test_a_populated_database_survives_a_full_round_trip(scratch_db):
     assert down.returncode == 0, (
         "a populated database could not be reversed to base:\n" + down.stderr[-2000:]
     )
-    assert down.stderr.count("Running downgrade") == 28, (
-        f"expected all 28 revisions to reverse, saw {down.stderr.count('Running downgrade')}"
+    assert down.stderr.count("Running downgrade") == 29, (
+        f"expected all 29 revisions to reverse, saw {down.stderr.count('Running downgrade')}"
     )
     assert _tables(scratch_db) <= {"alembic_version"}, "base still holds application tables"
 
