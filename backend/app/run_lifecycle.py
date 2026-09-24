@@ -330,9 +330,11 @@ async def record_evidence(
 
         snippet = item.get("snippet") or ""
 
-        # Rework replays the checkpoint, which contains the evidence already persisted
-        # by the original run. Reuse an existing row with the same source, task, and
-        # snippet rather than inserting the same evidence again on every revision.
+        # Evidence identity is source + exact quoted text, not the planner task that
+        # happened to discover it. The same quotation can be returned by two atomic tasks;
+        # persisting it twice inflates evidence counts and makes contradiction anchoring
+        # ambiguous. Rework is the same case. Keep the first task as discovery provenance
+        # and reuse that row everywhere downstream.
         task_id = str(item["task_id"]) if item.get("task_id") is not None else None
         existing_row = (
             await db.execute(
@@ -340,7 +342,6 @@ async def record_evidence(
                 .where(
                     Evidence.run_id == run.id,
                     Evidence.source_id == source_id,
-                    Evidence.task_id == task_id,
                     Evidence.content_hash == content_hash(snippet),
                     Evidence.snippet == snippet,
                 )
