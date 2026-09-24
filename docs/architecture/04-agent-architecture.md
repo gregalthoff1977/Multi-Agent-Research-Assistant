@@ -250,6 +250,16 @@ Versioned constants in `research_engine/prompts.py`, never inline in node code.
   `unknown`; review the original evidence for borderline cases. A single primary brand
   source can establish its own product fact, but cannot establish audience behavior.
   Social occurrences can become emerging cultural signals without implying prevalence.
+- **Finding alignment (V3.1)** — in real runs, citation verification is followed by a
+  second, fail-closed check that binds each cited sentence to its specific eligible
+  finding quotation. A URL can contain several claims with different assessments:
+  the URL alone never transfers confidence between them. If no finding quotation
+  supports the sentence, remove it; if support is limited, qualify its language.
+  Uncited factual sentences left by citation repair are removed. Findings retain
+  the task's requested geography, population, time period, and claim type. Distinct
+  category-size estimates carry structured scope comparisons and a brief report note
+  when their definitions are not reconciled. This does not certify that a publisher's
+  market methodology or category definitions match the research task.
 - **Synthesizer** — produces a research-only Four Cs deliverable from assessed findings;
   it preserves gaps/counter-signals and does
   **not** make positioning or strategic recommendations. Every factual claim carries `[n]`

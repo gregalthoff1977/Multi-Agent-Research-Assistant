@@ -1443,9 +1443,8 @@ async def _verifier_verdicts(
             for m in re.finditer(r"Claim\s+(\d+)\s*:\s*(YES|NO)", text, re.IGNORECASE)
         }
         for i in range(1, len(batch) + 1):
-            # A claim the verifier failed to rule on keeps its citations: stripping is
-            # only for claims explicitly judged unsupported.
-            verdicts.append(ruled.get(i, True))
+            # An absent ruling cannot authorize a finding or a cited assertion.
+            verdicts.append(ruled.get(i, False))
     return verdicts, cost, i_tot, o_tot
 
 
@@ -1636,15 +1635,16 @@ def _number_sources(evidence: list[dict]) -> tuple[list[dict], dict[str, int]]:
     return sources, seen
 
 
-def _apply_finding_confidence(draft: str, assessed: list[dict], seen: dict[str, int]) -> str:
-    """Remove claims without a suitable finding and qualify claims with limited support.
+async def _apply_finding_confidence(
+    draft: str, assessed: list[dict], seen: dict[str, int]
+) -> tuple[str, float, int, int]:
+    """Bind each cited claim to the *quotation* it uses before applying judgment.
 
-    This runs after citation fidelity. Multiple quotes from the same URL may have
-    different assessments; take the weakest instead of allowing a stronger unrelated
-    quote on that page to promote the claim. The model's content stays in place so its
-    exact citation is still auditable.
+    A URL can contain several attested quotes with different roles and suitability.
+    A citation alone cannot select the right finding. The existing claim verifier is
+    reused to judge the exact claim against each eligible finding quotation. A model
+    failure or missing ruling here removes the claim (real runs only).
     """
-    strength = {"high": 2, "medium": 1, "low": 0}
     by_index: dict[int, list[dict]] = {}
     for finding in assessed:
         if finding["status"] == "research_gap":
@@ -1652,20 +1652,124 @@ def _apply_finding_confidence(draft: str, assessed: list[dict], seen: dict[str, 
         for url in finding["source_urls"]:
             if url in seen:
                 by_index.setdefault(seen[url], []).append(finding)
+    claim_candidates = []
+    pairs = []
     for claim in _cited_claims(draft):
-        indices = claims.extract_citations(claim)
-        support = [f for n in indices for f in by_index.get(n, [])]
-        if not support:
-            draft = draft.replace(claim, "", 1)
+        # Only an assessment of this quotation can authorize this claim. Dedupe
+        # findings cited twice through the same source URL.
+        candidates = list(
+            {
+                id(f): f for n in claims.extract_citations(claim) for f in by_index.get(n, [])
+            }.values()
+        )
+        claim_candidates.append((claim, candidates))
+        pairs.extend((claim, f["finding"]) for f in candidates)
+    cost = 0.0
+    tokens_in = tokens_out = 0
+    try:
+        rulings, c, ti, to = await _verifier_verdicts(pairs) if pairs else ([], 0, 0, 0)
+        cost += c
+        tokens_in += ti
+        tokens_out += to
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("finding_alignment_unavailable", error=str(exc)[:200])
+        rulings = []
+    offset = 0
+    for claim, candidates in claim_candidates:
+        matched = [
+            f
+            for f, ok in zip(candidates, rulings[offset : offset + len(candidates)], strict=False)
+            if ok and _numbers_grounded(claim, f["finding"])
+        ]
+        offset += len(candidates)
+        if not matched:
+            # Some sentences legitimately combine two independently cited
+            # observations. Check their quotations together, then apply the
+            # weakest judgment of the set. Never treat the citation as a match.
+            if len(candidates) > 1 and len(rulings) == len(pairs):
+                try:
+                    combined, c, ti, to = await _verifier_verdicts(
+                        [(claim, "\n".join(f["finding"] for f in candidates))]
+                    )
+                    cost += c
+                    tokens_in += ti
+                    tokens_out += to
+                    if combined == [True] and _numbers_grounded(
+                        claim, "\n".join(f["finding"] for f in candidates)
+                    ):
+                        matched = candidates
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("finding_alignment_unavailable", error=str(exc)[:200])
+            if not matched:
+                draft = draft.replace(claim, "", 1)
+                continue
+        if all(f["status"] == "established" for f in matched):
             continue
-        if min(strength[f["confidence"]] for f in support) < 2:
-            marker = (
-                "Emerging cultural signal: "
-                if all(f["status"] == "emerging_signal" for f in support)
-                else "Qualified finding: "
+        # Plain-language qualification is part of the final checked claim. The
+        # source's limited claim is attributed rather than upgraded to a fact.
+        prefix = (
+            "An emerging cultural signal suggests that "
+            if all(f["status"] == "emerging_signal" for f in matched)
+            else "According to company material, "
+            if all(
+                f["evidence_role"] == "company_interpretation"
+                and any(a["source_class"] == "primary_company" for a in f["source_assessments"])
+                for f in matched
             )
-            draft = draft.replace(claim, marker + claim, 1)
+            else "The available evidence suggests that "
+        )
+        draft = draft.replace(claim, prefix + claim[0].lower() + claim[1:], 1)
+    return draft, cost, tokens_in, tokens_out
+
+
+def _remove_uncited_claims(draft: str) -> str:
+    """Do not let a failed citation-repair pass leave unsupported facts in prose."""
+    skipping = False
+    in_sources = False
+    for raw in draft.splitlines():
+        line = raw.strip()
+        if _VSOURCES_RE.match(line):
+            in_sources = True
+        if in_sources:
+            continue
+        if line.startswith("#"):
+            skipping = bool(_VLIMITATIONS_HEADING_RE.match(line))
+            continue
+        if skipping or not line:
+            continue
+        for sentence in claims.split_sentences(_VLIST_MARKER_RE.sub("", line)):
+            sentence = sentence.strip()
+            if claims.is_claim_sentence(sentence) and not claims.CITE_RE.search(sentence):
+                draft = draft.replace(sentence, "", 1)
     return draft
+
+
+def _market_scope_block(assessed: list[dict], seen: dict[str, int]) -> str:
+    """Surface cross-task market estimates whose definitions remain unreconciled."""
+    rows = []
+    visited = set()
+    by_evidence = {
+        eid: f for f in assessed if f["status"] != "research_gap" for eid in f["evidence_ids"]
+    }
+    for finding in assessed:
+        for comparison in finding.get("scope_comparisons", []):
+            other = by_evidence.get(comparison["other_evidence_id"])
+            pair = frozenset((finding["evidence_ids"][0], comparison["other_evidence_id"]))
+            if not other or pair in visited:
+                continue
+            visited.add(pair)
+            a = next((seen[u] for u in finding["source_urls"] if u in seen), None)
+            b = next((seen[u] for u in other["source_urls"] if u in seen), None)
+            if a and b:
+                rows.append(
+                    f"[{a}] concerns {finding['scope']['population']} "
+                    f"({finding['scope']['geography']}, {finding['scope']['time_period']}); "
+                    f"[{b}] concerns {other['scope']['population']} "
+                    f"({other['scope']['geography']}, {other['scope']['time_period']}). "
+                    "The category definitions and methods have not been reconciled; "
+                    "these estimates cannot be compared as equivalent."
+                )
+    return "## Market estimate scope\n\n" + "\n\n".join(rows) if rows else ""
 
 
 async def synthesizer_node(state: AgentState) -> dict:
@@ -1861,12 +1965,16 @@ async def synthesizer_node(state: AgentState) -> dict:
     # the snippets of its own cited sources, exactly as the eval judge rules. Runs after
     # the repair pass so a repair-introduced drift is caught too. Unsupported claims lose
     # their markers and carry a visible note rather than shipping a hollow citation.
+    draft = _remove_uncited_claims(draft)
     draft, vcost, vi, vo = await _verify_citation_fidelity(sid, draft, sources)
     # An LLM can still phrase a cited, weakly supported observation as an established
     # fact. Mark its actual support level after citation verification, leaving the
     # original claim and marker intact for independent checking.
     if get_run_config().llm_mode != "fake":
-        draft = _apply_finding_confidence(draft, assessed, seen)
+        draft, fcost, fi, fo = await _apply_finding_confidence(draft, assessed, seen)
+        cost += fcost
+        i += fi
+        o += fo
     logger.info(
         "synthesis_verified_draft",
         session_id=sid,
@@ -1891,6 +1999,10 @@ async def synthesizer_node(state: AgentState) -> dict:
             agent="synthesizer",
             message=f"Surfaced {len(state['contradictions'])} conflicting claim pair(s) in the report",
         )
+
+    scope_block = _market_scope_block(assessed, seen)
+    if scope_block:
+        draft = contradictions.insert_block(draft, scope_block)
 
     await emit(
         sid,

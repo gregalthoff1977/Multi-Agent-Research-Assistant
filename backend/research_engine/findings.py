@@ -40,6 +40,10 @@ class Finding(BaseModel):
     caveats: list[str] = Field(default_factory=list)
     source_assessments: list[SourceAssessment] = Field(default_factory=list)
     independent_publishers: int = 0
+    # The research task's intended scope, retained for the strategist and for
+    # comparing figures that look alike but measure different markets.
+    scope: dict[str, str] = Field(default_factory=dict)
+    scope_comparisons: list[dict[str, str]] = Field(default_factory=list)
 
 
 def _publisher(url: str) -> str:
@@ -200,13 +204,28 @@ def assess_source(evidence: dict, task: dict) -> SourceAssessment:
         suitability, reason = "limited", "Only a search-result excerpt was retrieved."
     geography = (task.get("geography") or "").lower()
     population = (task.get("population") or "").lower()
+    geo_aliases = {
+        "u.s.": ("u.s.", "united states", "u.s. ", "american"),
+        "us": ("united states", "u.s.", "american"),
+    }
     geo_fit = (
         "stated"
-        if geography and geography not in {"global", "not specified"} and geography in snippet
+        if geography
+        and geography not in {"global", "not specified"}
+        and any(alias in snippet for alias in geo_aliases.get(geography, (geography,)))
         else "unverified"
     )
     pop_terms = _tokens(population) - {"people", "consumers", "market", "brand", "coffee"}
-    pop_fit = "stated" if pop_terms and any(t in snippet for t in pop_terms) else "unverified"
+    generation_fit = "gen z" not in population or "gen z" in snippet
+    pop_fit = (
+        "stated"
+        if generation_fit
+        and (
+            (pop_terms and all(t in snippet for t in pop_terms))
+            or (not pop_terms and "gen z" in population and "gen z" in snippet)
+        )
+        else "unverified"
+    )
     return SourceAssessment(
         source_class=cls,
         suitability=suitability,
@@ -336,6 +355,46 @@ def build_findings(
                 caveats=caveats,
                 source_assessments=assessments,
                 independent_publishers=len(strong_publishers),
+                scope={
+                    key: str(task.get(key) or "")
+                    for key in ("query", "geography", "population", "time_period", "evidence_type")
+                },
             ).model_dump()
         )
+    # Two category-size estimates must not be counted as independent confirmation
+    # merely because they are both prices of a market. Compare their task scopes,
+    # without inferring that the definitions supplied by publishers are equivalent.
+    sizes = [
+        f
+        for f in findings
+        if f["domain"] == "category"
+        and "market size" in f["scope"]["evidence_type"].lower()
+        and re.search(
+            r"(?:\$|USD).{0,30}(?:\b(?:million|billion)\b|\d+(?:\.\d+)?\s*[mb]\b)",
+            f["finding"],
+            re.I,
+        )
+    ]
+    for i, left in enumerate(sizes):
+        for right in sizes[i + 1 :]:
+            dimensions = [
+                key
+                for key in ("geography", "population", "time_period")
+                if left["scope"][key].lower() != right["scope"][key].lower()
+            ]
+            # Even an identical task description does not establish that two
+            # proprietary market forecasts use the same channel or product scope.
+            relation = "different_task_scope" if dimensions else "unverified_source_scope"
+            for current, other in ((left, right), (right, left)):
+                current["scope_comparisons"].append(
+                    {
+                        "other_task_id": other["task_id"],
+                        "other_evidence_id": other["evidence_ids"][0],
+                        "relation": relation,
+                        "dimensions": ", ".join(dimensions) or "publisher definitions",
+                    }
+                )
+                caution = "Market estimates have different or unverified definitions; do not compare them as equivalent."
+                if caution not in current["caveats"]:
+                    current["caveats"].append(caution)
     return findings

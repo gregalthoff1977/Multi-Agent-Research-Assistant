@@ -135,6 +135,10 @@ instead.
 New native runs may carry `findings`, a list of objects with a quoted finding, Four Cs
 domain/module, evidence role, status (`established`, `qualified`, `emerging_signal`, or
 `research_gap`), confidence, caveats, source assessments, source URLs, and evidence IDs.
+V3.1 findings also include `scope` (the task's query, geography, population, time
+period, and claim type) and `scope_comparisons` for market estimates whose category
+definitions have not been reconciled. These additive fields are absent in older
+bundles; no migration or re-assessment is performed when they are read.
 Each evidence ID hashes `source_url + NUL + snippet` with SHA-256, so it survives evidence
 row deduplication. The offline verifier checks that every ID resolves to an exported
 evidence snippet and to the attributed URL. This verifies identity and integrity, not the

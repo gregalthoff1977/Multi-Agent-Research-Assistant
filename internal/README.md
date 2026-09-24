@@ -15,6 +15,7 @@ If you want to know how the system actually works, read [`../docs/`](../docs/00_
 | File | What it is |
 |---|---|
 | `12_Launch_Plan.md` | Milestone plan M5–M19, defect log, budget and scale assumptions. Cited from source comments as `docs/12`. |
+| `v3-1-evidence-judgment-audit.md` | September 2026 trace of the V3 assessment path, its source-to-claim alignment gap, and the V3.1 repair. |
 
 **Do not link to these from `docs/` or from the README.** The docs site renders every
 Markdown file under `docs/`, so a note that belongs here and is filed there gets published.
