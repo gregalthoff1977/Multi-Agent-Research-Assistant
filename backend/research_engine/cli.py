@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import re
 import sys
 import uuid
@@ -188,6 +189,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+
+    # --json is a machine-readable stdout contract. structlog may be configured by a
+    # host/test process to render INFO diagnostics to stdout, so silence INFO logging for
+    # this invocation; errors still go to stderr and the JSON document remains parseable.
+    previous_disable = logging.root.manager.disable
+    if args.json:
+        logging.disable(logging.INFO)
+
     try:
         outcome, session_id = asyncio.run(_drive(args))
     except KeyboardInterrupt:  # pragma: no cover - interactive
@@ -200,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.json:
+        logging.disable(previous_disable)
         payload = {
             "status": outcome.status,
             "report": outcome.report,
