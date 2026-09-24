@@ -1282,10 +1282,9 @@ async def critic_node(state: AgentState) -> dict:
 # → its markers are stripped and the claim is flagged, because a citation the evidence
 # does not back is worse than an admitted gap.
 
-# Must END with a sentence terminator: the eval judge splits sentences on [.!?] +
-# whitespace, and a note without one gets merged into the FOLLOWING sentence — measured
-# as a supported claim ruled NO because it carried the previous claim's note (run #3).
-_VERIFIED_NOTE = " *(citation could not be verified)*."
+# Unsupported factual claims are removed before review. A broken citation marker or an
+# inline "could not be verified" warning is not a research finding; the uncertainty belongs
+# in Limitations / research gaps, not in factual prose.
 # The claim split MUST mirror the eval judge's `claims.split_sentences`/`claim_lines`
 # exactly (lookahead on the next sentence's opener + abbreviation rejoin): this pass is
 # measured by that judge, so it must rule on the same claims, not fragments of them.
@@ -1522,9 +1521,10 @@ async def _verify_citation_fidelity(
         if ok_by_claim.get(claim, claim not in mechanically_unsupported):
             continue
         stripped += 1
-        # The note carries its own terminator (see _VERIFIED_NOTE), so drop the claim's.
-        cleaned = re.sub(r"\s*\[\d+(?:\s*,\s*\d+)*\]", "", claim).strip().rstrip(".!?")
-        result = result.replace(claim, cleaned + _VERIFIED_NOTE, 1)
+        # Remove the unsupported assertion entirely. Leaving the prose in place without
+        # its marker turns a known-unsupported claim into an apparently factual uncited
+        # statement; leaving a warning in the prose pollutes the report with broken output.
+        result = result.replace(claim, "", 1)
 
     if stripped:
         await emit(
