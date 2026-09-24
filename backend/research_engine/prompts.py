@@ -207,9 +207,8 @@ Return the full corrected Markdown report."""
 
 # Post-synthesis citation-fidelity check (docs/12 M5). The synthesizer writes from the
 # executor's key_fact, which can drift past its verbatim snippet; the eval judge rules on
-# snippets. This pass applies the same ruling inside the graph, so a claim that would be
-# judged unsupported has its markers stripped — with a visible note — instead of shipping
-# a citation the evidence does not back.
+# snippets. This pass applies the same ruling inside the graph. Claims that fail are
+# removed before review rather than published as unsupported prose or broken-citation text.
 CITATION_VERIFY_PROMPT = """You verify whether claims are supported by their cited evidence.
 For each numbered claim below you are given the exact snippets its cited sources provided.
 Judge whether the claim is supported by those snippets — numbers, dates, and entities
