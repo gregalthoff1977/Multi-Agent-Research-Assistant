@@ -186,6 +186,13 @@ def test_abbreviations_do_not_split_a_claim():
     ]
 
 
+def test_us_abbreviation_does_not_split_before_uppercase_acronym():
+    report = "# Findings\n\nThe U.S. RTD coffee market reached a new high [1].\n"
+    expected = ["The U.S. RTD coffee market reached a new high [1]."]
+    assert graph._cited_claims(report) == expected
+    assert _judge_cited_claims(report) == expected
+
+
 def test_hard_wrapped_sentence_fragments_the_same_way_in_both():
     """A paragraph broken across lines fragments — but identically on both sides.
 
