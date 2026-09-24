@@ -359,10 +359,14 @@ async def record_evidence(
             # snippet from the same source earned that source a citation number.
             if existing_provenance != "UNATTESTED" and snippet.strip():
                 if idx is not None:
-                    evidence_by_index.setdefault(idx, []).append(existing_eid)
-                evidence_by_quote.setdefault(
+                    bucket = evidence_by_index.setdefault(idx, [])
+                    if existing_eid not in bucket:
+                        bucket.append(existing_eid)
+                quote_bucket = evidence_by_quote.setdefault(
                     (source_id, snippet.strip()[:500]), []
-                ).append(existing_eid)
+                )
+                if existing_eid not in quote_bucket:
+                    quote_bucket.append(existing_eid)
             continue
 
         sequence = base + offset
