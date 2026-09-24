@@ -414,6 +414,12 @@ async def record_evidence(
                 attestation_run_at=attestation_run_at,
             )
         )
+        # The desktop session deliberately uses autoflush=False while the server's
+        # session autoflushes. Flush here so the next loop iteration's duplicate lookup
+        # observes this evidence row on both hosts. Without this boundary, identical
+        # quotations discovered by two tasks deduplicated on Postgres/server but were
+        # inserted twice by SQLite/desktop.
+        await db.flush()
         watermark = sequence
         idx = index_by_url.get(norm)
         if provenance_state != "UNATTESTED" and snippet.strip():
