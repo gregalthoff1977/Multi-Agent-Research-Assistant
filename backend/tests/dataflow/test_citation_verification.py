@@ -6,8 +6,8 @@ Two defects in one run (eval-2026-08-12) pinned these:
    reached the user unchanged. The synthesizer writes from the executor's key_fact, which
    can drift past its verbatim snippet — and the eval judge rules on snippets. So the
    graph now checks every cited claim against the snippets of its own cited sources with
-   the SAME ruling method the eval judge uses, and strips the markers from any claim that
-   fails — never silently editing a claim into appearing uncited.
+   the SAME ruling method the eval judge uses, and removes any claim that fails rather
+   than publishing unsupported prose or a broken-citation warning.
 
 2. Eight of ten queries died with "planner: could not produce a valid task list" while
    the real cause was a 429 RESOURCE_EXHAUSTED on the provider key. `with_structured_output`
@@ -58,9 +58,9 @@ async def test_unsupported_claim_loses_its_citation(monkeypatch):
     result, cost, i, o = await graph_mod._verify_citation_fidelity("s", DRAFT, SOURCES)
 
     assert "Solar grew 50% [1]." in result  # supported claim untouched
-    assert "Batteries doubled in capacity [2]" not in result.replace(" [2]", "")
-    assert "[2]" not in result.split("## Sources")[0], "stripped from the body"
-    assert "(citation could not be verified)" in result
+    assert "Batteries doubled in capacity" not in result
+    assert "[2]" not in result.split("## Sources")[0], "unsupported claim removed from body"
+    assert "citation could not be verified" not in result
     assert cost == 0.0 and i == 0 and o == 0  # fake-mode verdicts cost nothing
 
 
@@ -196,9 +196,8 @@ async def test_number_absent_from_snippets_is_stripped_without_asking_the_model(
     ]
     result, *_ = await graph_mod._verify_citation_fidelity("s", draft, sources)
     assert "Solar grew 50% [1]." in result
-    stripped_claim = result.split("Adoption")[1].split("\n")[0]
-    assert "[1]" not in stripped_claim.split("*(")[0]
-    assert "(citation could not be verified)" in stripped_claim
+    assert "Adoption reached 5%" not in result
+    assert "citation could not be verified" not in result
 
 
 def test_short_number_is_not_grounded_by_a_longer_one():
@@ -239,11 +238,7 @@ async def test_deictic_cited_sentence_is_stripped_deterministically(monkeypatch)
     ]
     result, *_ = await graph_mod._verify_citation_fidelity("s", draft, sources)
     body = result.split("## Sources")[0]
-    # The note ends with a terminator so the judge's sentence split never merges it
-    # into the NEXT sentence (measured corrupting a supported claim in run #3).
-    assert (
-        "This is detailed in Article 55 of the AI Act *(citation could not be verified)*." in body
-    )
+    assert "This is detailed in Article 55 of the AI Act" not in body
     assert "document serious incidents under the AI Act [1]." in body
 
 
@@ -272,10 +267,7 @@ async def test_bold_labelled_sentence_is_stripped_deterministically(monkeypatch)
     ]
     result, *_ = await graph_mod._verify_citation_fidelity("s", draft, sources)
     body = result.split("## Sources")[0]
-    assert (
-        "**Cost**: Prices fell sharply across the sector *(citation could not be verified)*."
-        in body
-    )
+    assert "**Cost**: Prices fell sharply across the sector" not in body
     assert "Solar grew 50% [1]." in body
 
 
