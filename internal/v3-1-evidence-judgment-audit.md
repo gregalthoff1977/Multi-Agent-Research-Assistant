@@ -76,3 +76,40 @@ tokens are included in run accounting. It
 does not prove that a quoted publisher's method, market definition or audience
 sample is valid. Live behavior still requires a run on this branch with the exact
 four-domain Fast/Plan Review configuration and access to its persisted evidence.
+
+## Follow-up: September 24 live acceptance report
+
+The later four-domain Chameleon report contains 32 sources. It cites a coffee
+seller's blog for a Gen Z demographic superlative, `glassandnote.com` for several
+high-precision pricing figures, `accio.com` for a 59% consumer statistic, and
+Commonwealth Joe for aesthetic/cultural observations. It retains competing market
+estimates and identifies research gaps. The report file does **not** contain the
+run ID, original task JSON, attested snippets, finding JSON, or worker commit.
+The prose contains none of the real-mode V3.1 qualification prefixes, so it
+cannot independently prove that this branch's final judgment pass executed.
+
+The table below exercises the branch against representative `FETCHED_BODY` excerpts
+from those report sources. Its statuses are reproducible code outputs, **not**
+retrospective assertions about missing live checkpoint data.
+
+| Diagnostic | Classification → role → finding | Enforced result |
+| --- | --- | --- |
+| Pure Earth Coffee Gen Z demographic superlative | `commercial_blog`; observed Consumer behavior or, for a quantified Culture superlative, `measured_fact`; unsuitable, Low, gap. The source page's visible statement says fastest-growing; the report adds largest. | No measured population claim from the blog. Literal superlatives must appear in the attested quotation. |
+| Commonwealth Joe Instagram aesthetics | `commercial_blog`; cultural occurrence → `cultural_signal`, Low, emerging. | Content depicting visually styled cold brew can remain a signal. The same occurrence cannot ground a bare population generalization about Gen Z behavior. |
+| Glass & Note elasticity | `unknown`; pricing quotation containing elasticity → `measured_fact`, limited, Low; method unverified. The original raw statistic is retained in `source_quotes`. | A cited number may be reported with explicit publisher and missing-method attribution; the bare number is not an established measurement. The page was not accessible for independent methodology verification here. |
+| Accio 59% sustainability claim | `commercial_vendor`; population percentage → `measured_fact`; unsuitable, Low, gap. The Accio page cites two vendor pages for the statistic, but its quotation does not establish a sample/method. | No consumer prevalence finding from that page alone. Other qualitative sustainability content may still be treated as a limited trend observation. |
+
+The first promotion point was `build_findings`: `finding` had been an exact raw
+quotation even for Low/conflicted evidence. The second was final alignment:
+`_verifier_verdicts` asked whether text matched a citation, not whether the matched
+role, scope or method entitled the report to make that claim. A bare quantitative
+claim could thus pass the semantic check and receive only a generic hedge; a
+Culture-tagged population assertion could pass as an emerging signal. A third,
+unproven risk is a run resumed or published without the current judgment pass;
+the real-mode finalizer now refuses such a draft. The report alone cannot
+identify whether runtime version mismatch occurred in that specific live run.
+
+No migration is required for `source_quotes` or the checkpoint judgment flag:
+findings are stored in an existing JSON revision column and graph state is
+JSON-serializable. Old bundles remain readable; the report needs a fresh run to
+test the corrected wording and source mix in vivo.

@@ -2,7 +2,7 @@
 
 This layer does not infer survey methods, publication dates, or independent reporting
 from a URL. Unknown dimensions stay unknown; repetition by vendors never raises confidence.
-Findings quote source text rather than trusting an executor's paraphrased ``key_fact``.
+Findings express what a quotation can establish; raw quotations remain separate.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ class SourceAssessment(BaseModel):
 
 class Finding(BaseModel):
     finding: str
+    source_quotes: list[str] = Field(default_factory=list)
     domain: str
     module: str
     task_id: str
@@ -92,6 +93,8 @@ def source_class(url: str, title: str, task: dict) -> str:
         return "academic"
     if host in {"reddit.com", "tiktok.com", "instagram.com", "youtube.com", "urbandictionary.com"}:
         return "social_community"
+    if host == "accio.com":
+        return "commercial_vendor"
     if host in {"wikipedia.org", "linkedin.com", "medium.com", "substack.com"}:
         return "user_published"
     if host in {
@@ -118,9 +121,18 @@ def source_class(url: str, title: str, task: dict) -> str:
     return "unknown"
 
 
-def _role(task: dict) -> str:
+def _role(task: dict, snippet: str = "") -> str:
     domain = (task.get("domain") or "").lower()
     kind = (task.get("evidence_type") or "").lower()
+    quote = snippet.lower()
+    # A task's Culture or Pricing label must not turn a population estimate or
+    # elasticity into a mere occurrence. The assertion itself determines its role.
+    if domain != "company" and (
+        re.search(r"\d+(?:\.\d+)?\s*%", quote)
+        or (domain == "category" and re.search(r"\b(elasticit\w*|cogs|cost of goods)\b", quote))
+        or (domain == "culture" and re.search(r"\b(largest|fastest.growing|majority)\b", quote))
+    ):
+        return "measured_fact"
     if domain == "culture":
         return "cultural_signal"
     if domain == "company":
@@ -142,7 +154,7 @@ def _role(task: dict) -> str:
 def assess_source(evidence: dict, task: dict) -> SourceAssessment:
     url = evidence.get("source_url") or ""
     cls = source_class(url, evidence.get("source_title") or "", task)
-    role = _role(task)
+    role = _role(task, evidence.get("snippet") or "")
     grade = evidence.get("attestation_grade") or "UNCHECKED"
     snippet = (evidence.get("snippet") or "").lower()
     method = (
@@ -182,7 +194,13 @@ def assess_source(evidence: dict, task: dict) -> SourceAssessment:
                 "limited",
                 "Method and sampled population are not verified from a source label.",
             )
-        elif cls in {"primary_company", "commercial_blog", "social_community", "user_published"}:
+        elif cls in {
+            "primary_company",
+            "commercial_blog",
+            "commercial_vendor",
+            "social_community",
+            "user_published",
+        }:
             suitability, reason = (
                 "unsuitable",
                 "This source cannot establish population behavior or incidence.",
@@ -238,6 +256,25 @@ def assess_source(evidence: dict, task: dict) -> SourceAssessment:
     )
 
 
+def _finding_statement(
+    members: list[tuple[str, dict, SourceAssessment]], status: str, task: dict
+) -> str:
+    """A permissible research statement, distinct from its attested quotation."""
+    if status == "research_gap":
+        return f"Available evidence does not establish: {task.get('query') or task.get('evidence_type') or 'this question'}"
+    item = members[0][1]
+    snippet = item["snippet"].strip()
+    key_fact = (item.get("key_fact") or "").strip()
+    # A verbatim substring is safe to use; the executor's free paraphrase is not.
+    statement = key_fact if key_fact and key_fact.lower() in snippet.lower() else snippet
+    publisher = members[0][2].publisher or "the cited source"
+    if status == "emerging_signal":
+        return f"The {publisher} material contains this cultural expression: {statement}"
+    if status == "qualified":
+        return f"{publisher} reports: {statement}"
+    return statement
+
+
 def build_findings(
     evidence: list[dict], tasks: list[dict], contradictions: list[dict] | None = None
 ) -> list[dict]:
@@ -254,7 +291,7 @@ def build_findings(
         for key in ("source_a", "source_b")
         if p.get(key)
     }
-    groups: dict[tuple[str, str], list[tuple[str, dict, SourceAssessment]]] = defaultdict(list)
+    groups: dict[tuple[str, str, str], list[tuple[str, dict, SourceAssessment]]] = defaultdict(list)
     seen: set[tuple[str, str]] = set()
     for item in evidence:
         if not isinstance(item, dict):
@@ -277,10 +314,12 @@ def build_findings(
         group_key = (
             key_fact if key_fact and key_fact in " ".join(snippet.lower().split()) else identity[1]
         )
-        groups[(task_id, group_key)].append((evidence_id(url, snippet), item, assessment))
+        groups[(task_id, group_key, _role(task, snippet))].append(
+            (evidence_id(url, snippet), item, assessment)
+        )
 
     findings = []
-    for (task_id, _), members in groups.items():
+    for (task_id, _, role), members in groups.items():
         task = by_task[task_id]
         assessments = [a for _, _, a in members]
         strong_publishers: set[str] = set()
@@ -297,7 +336,6 @@ def build_findings(
                 continue
             quoted_texts.add(exact)
             strong_publishers.add(assessment.publisher)
-        role = _role(task)
         disputed = any(_normalized_url(m.get("source_url")) in contested for _, m, _ in members)
         direct_company = role == "company_fact" and bool(strong_publishers)
         scope_verified = all(
@@ -329,6 +367,8 @@ def build_findings(
             caveats.append("Verbatim repetition across sources is not independent corroboration.")
         if any(a.suitability in {"limited", "signal", "unsuitable"} for a in assessments):
             caveats.append("Source suitability limits what this evidence can establish.")
+        if role == "measured_fact" and any(a.methodology == "unverified" for a in assessments):
+            caveats.append("The underlying measurement method and sample are unverified.")
         if any(a.attestation == "SEARCH_SNIPPET" for a in assessments):
             caveats.append("At least one quotation was attested only to a search result.")
         if status == "emerging_signal":
@@ -343,7 +383,8 @@ def build_findings(
             caveats.append("Publication recency is unverified.")
         findings.append(
             Finding(
-                finding=members[0][1]["snippet"],
+                finding=_finding_statement(members, status, task),
+                source_quotes=[m["snippet"] for _, m, _ in members],
                 domain=task.get("domain") or "unclassified",
                 module=task.get("module") or "unclassified",
                 task_id=task_id,

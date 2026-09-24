@@ -139,6 +139,10 @@ V3.1 findings also include `scope` (the task's query, geography, population, tim
 period, and claim type) and `scope_comparisons` for market estimates whose category
 definitions have not been reconciled. These additive fields are absent in older
 bundles; no migration or re-assessment is performed when they are read.
+Current findings also carry `source_quotes`, the attested quotation(s) separate
+from the bounded `finding` statement. Older bundles lack `source_quotes` and still
+verify against their evidence IDs; the offline verifier checks linkage, not the
+truth or methodological strength of the resulting statement.
 Each evidence ID hashes `source_url + NUL + snippet` with SHA-256, so it survives evidence
 row deduplication. The offline verifier checks that every ID resolves to an exported
 evidence snippet and to the attributed URL. This verifies identity and integrity, not the

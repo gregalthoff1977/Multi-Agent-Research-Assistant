@@ -5,6 +5,7 @@ from langchain_core.messages import AIMessage
 from research_engine.findings import assess_source, build_findings, evidence_id
 from research_engine.graph import (
     _apply_finding_confidence,
+    _claim_scope_grounded,
     _market_scope_block,
     _remove_uncited_claims,
 )
@@ -161,7 +162,7 @@ async def test_report_qualifies_weak_claims_and_removes_unsupported_claims(monke
     result, cost, tokens_in, tokens_out = await _apply_finding_confidence(
         report, assessed, {evidence["source_url"]: 1}
     )
-    assert "An emerging cultural signal suggests that a coffee community" in result
+    assert "In one cited cultural account, a coffee community" in result
     assert "Most young people" not in result
     assert "[1] https://reddit.com" in result
     assert (cost, tokens_in, tokens_out) == (0.001, 10, 2)
@@ -311,7 +312,8 @@ async def test_real_synthesis_receives_assessed_findings_and_filters_unattested(
     assert result["findings"][0]["confidence"] == "high"
     assert result["findings"][1]["source_urls"] == [good["source_url"]]
     assert result["findings"][2]["status"] == "emerging_signal"
-    assert "An emerging cultural signal suggests that a vendor" in result["draft_report"]
+    assert "In one cited cultural account, a vendor" in result["draft_report"]
+    assert result["judgment_applied"] is True
     assert [s["url"] for s in result["sources"]] == [good["source_url"], weak["source_url"]]
 
 
@@ -349,3 +351,111 @@ async def test_commercial_consumer_gap_cannot_be_cited_as_gen_z_fact(monkeypatch
     assert outcome["sources"] == []
     assert vendor["snippet"] not in prompts_seen[0]
     assert "Gen Z chooses" not in outcome["draft_report"]
+
+
+def test_vendor_demographic_superlative_never_becomes_a_measured_fact():
+    source = item(
+        "https://pureearthcoffee.com/blogs/fuel-your-pursuit/gen-z-coffee-consumption-habits-2026",
+        "Gen Z is the fastest-growing coffee demographic in the United States.",
+    )
+    demographic = build_findings(
+        [source], [task("consumer", "demographic growth", "Gen Z", "U.S.")]
+    )[0]
+    cultural = build_findings([source], [task("culture", "emerging signal", "Gen Z", "U.S.")])[0]
+    assert demographic["status"] == cultural["status"] == "research_gap"
+    assert cultural["evidence_role"] == "measured_fact"
+    assert cultural["source_assessments"][0]["source_class"] == "commercial_blog"
+    assert not _claim_scope_grounded(
+        "Gen Z is the largest and fastest-growing coffee demographic in the U.S. [1].",
+        source["snippet"],
+    )
+
+
+def test_accio_population_statistic_needs_a_method():
+    source = item(
+        "https://www.accio.com/business/new_trending_coffee",
+        "Certifications are critical for 59% of consumers.",
+    )
+    finding = build_findings(
+        [source], [task("category", "industry observation", "U.S. consumers", "U.S.")]
+    )[0]
+    assert finding["evidence_role"] == "measured_fact"
+    assert finding["status"] == "research_gap"
+    assert finding["source_assessments"][0]["source_class"] == "commercial_vendor"
+    assert finding["source_assessments"][0]["methodology"] == "unverified"
+
+
+async def test_precision_from_unknown_publisher_is_attributed_and_caveated(monkeypatch):
+    from research_engine import graph
+
+    source = item(
+        "https://glassandnote.com/beer/pricing-product-analysis-iced-rtd-coffee-drinks-the-us",
+        "Price elasticity is −0.32 for premium cold-brew formats.",
+    )
+    assessed = build_findings([source], [task("category", "pricing", "U.S. cold brew", "U.S.")])
+    finding = assessed[0]
+    assert finding["evidence_role"] == "measured_fact"
+    assert finding["status"] == "qualified"
+    assert finding["confidence"] == "low"
+    assert finding["finding"] != source["snippet"]
+    assert finding["source_quotes"] == [source["snippet"]]
+    assert "method and sample" in " ".join(finding["caveats"])
+
+    async def judged(pairs):
+        return [True] * len(pairs), 0.0, 0, 0
+
+    monkeypatch.setattr(graph, "_verifier_verdicts", judged)
+    draft = "Price elasticity is −0.32 for premium cold-brew formats [1]."
+    result, *_ = await _apply_finding_confidence(draft, assessed, {source["source_url"]: 1})
+    assert "glassandnote.com reports, without a verified method, that price elasticity" in result
+
+
+async def test_cultural_occurrence_survives_but_population_claim_does_not(monkeypatch):
+    from research_engine import graph
+
+    source = item(
+        "https://commonwealthjoe.com/blogs/blog/coffee-that-connects",
+        "Gen Z share cold brew online; our brand presents it with visual garnishes.",
+    )
+    assessed = build_findings([source], [task("culture", "aesthetic signal", "Gen Z")])
+    assert assessed[0]["status"] == "emerging_signal"
+
+    async def judged(pairs):
+        return [True] * len(pairs), 0.0, 0, 0
+
+    monkeypatch.setattr(graph, "_verifier_verdicts", judged)
+    draft = "A coffee brand presents cold brew with visual garnishes [1].\nGen Z share cold brew online [1]."
+    result, *_ = await _apply_finding_confidence(draft, assessed, {source["source_url"]: 1})
+    assert "In one cited cultural account, a coffee brand" in result
+    assert "Gen Z share cold brew" not in result
+
+
+def test_scope_expansion_is_blocked():
+    pairs = [
+        ("Cold brew appeals to consumers [1].", "Iced coffee appeals to consumers."),
+        ("Younger consumers choose coffee [1].", "Gen Z chooses coffee."),
+        ("RTD cold brew grew [1].", "RTD coffee grew."),
+        ("The U.S. RTD coffee market grew [1].", "The global RTD coffee market grew."),
+    ]
+    assert all(not _claim_scope_grounded(claim, quote) for claim, quote in pairs)
+
+
+def test_real_finalizer_refuses_a_draft_without_judgment():
+    from research_engine.graph import finalizer_node
+
+    token = set_run_config(RunConfig(llm_mode="real"))
+    try:
+        rejected = finalizer_node(
+            {"tasks": [task("consumer", "behavior")], "draft_report": "An unassessed fact [1]."}
+        )
+        accepted = finalizer_node(
+            {
+                "tasks": [task("consumer", "behavior")],
+                "judgment_applied": True,
+                "draft_report": "Assessed fact [1].",
+            }
+        )
+    finally:
+        reset_run_config(token)
+    assert rejected["final_report"] is None and rejected["error"]
+    assert accepted["final_report"] == "Assessed fact [1]."

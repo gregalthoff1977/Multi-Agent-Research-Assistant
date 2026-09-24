@@ -250,11 +250,20 @@ Versioned constants in `research_engine/prompts.py`, never inline in node code.
   `unknown`; review the original evidence for borderline cases. A single primary brand
   source can establish its own product fact, but cannot establish audience behavior.
   Social occurrences can become emerging cultural signals without implying prevalence.
+  `source_quotes` retains the attested wording separately from `finding`, which is the
+  limited statement the engine permits: a weak publisher's assertion is attributed,
+  and a gap names the unanswered task. A numerical population assertion inside a
+  Culture task is still a measured claim and must meet that standard; task labels do
+  not turn a statistic into an anecdotal cultural occurrence.
 - **Finding alignment (V3.1)** — in real runs, citation verification is followed by a
   second, fail-closed check that binds each cited sentence to its specific eligible
   finding quotation. A URL can contain several claims with different assessments:
   the URL alone never transfers confidence between them. If no finding quotation
-  supports the sentence, remove it; if support is limited, qualify its language.
+  supports the sentence, remove it; if support is limited, attribute it to its
+  publisher and preserve methodological uncertainty. Population generalizations
+  cannot be backed solely by a cultural occurrence. Product, population, geographic,
+  and superlative terms in a claim must also be present in the supporting quotation.
+  A real run cannot finalize a draft that lacks completed finding judgment.
   Uncited factual sentences left by citation repair are removed. Findings retain
   the task's requested geography, population, time period, and claim type. Distinct
   category-size estimates carry structured scope comparisons and a brief report note

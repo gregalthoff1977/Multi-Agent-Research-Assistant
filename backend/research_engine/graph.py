@@ -1338,6 +1338,42 @@ def _numbers_grounded(claim: str, snippets: str) -> bool:
     )
 
 
+def _claim_scope_grounded(claim: str, quotations: str) -> bool:
+    """Block common enlargements of a quotation's population, product, or geography."""
+    c = re.sub(r"[-‐‑–]", " ", claim.lower())
+    q = re.sub(r"[-‐‑–]", " ", quotations.lower())
+    for term in ("cold brew", "iced coffee", "gen z", "millennials"):
+        if re.search(rf"\b{term}\b", c) and not re.search(rf"\b{term}\b", q):
+            return False
+    if re.search(r"\b(?:ready to drink|rtd)\b", c) and not re.search(
+        r"\b(?:ready to drink|rtd)\b", q
+    ):
+        return False
+    if re.search(r"\bu\.s\.|\bunited states\b", c) and not re.search(
+        r"\bu\.s\.|\bunited states\b|\bamerican\b", q
+    ):
+        return False
+    if re.search(r"\b(?:younger consumers|young people)\b", c) and not re.search(
+        r"\b(?:younger consumers|young people|young adults)\b", q
+    ):
+        return False
+    for term in ("largest", "fastest growing", "majority"):
+        if re.search(rf"\b{term}\b", c) and not re.search(rf"\b{term}\b", q):
+            return False
+    return True
+
+
+def _population_generalization(claim: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:gen z|millennials|consumers|young people|young adults)\b.{0,110}"
+            r"\b(?:prefer|choose|drink|share|demand|want|seek|are|is|view|use|buy)\b",
+            claim.lower(),
+            re.I,
+        )
+    )
+
+
 #: This pass's own sources-section boundary, and the one place it deliberately differs
 #: from `claims.SOURCES_HEADING_RE` (`#{1,6}`): a **bare** `Sources` line with no Markdown
 #: heading marker also ends the body here. Kept local rather than pushed into `claims`
@@ -1486,7 +1522,7 @@ async def _verify_citation_fidelity(
         # Deterministic pre-check before any model rules: a number the cited snippets do
         # not contain verbatim can never be "supported", whatever a small local verifier
         # says (it rubber-stamped invented figures in the second Ollama eval).
-        if not _numbers_grounded(claim, snippets):
+        if not _numbers_grounded(claim, snippets) or not _claim_scope_grounded(claim, snippets):
             logger.warning(
                 "citation_verify_number_mismatch",
                 session_id=sid,
@@ -1646,6 +1682,12 @@ async def _apply_finding_confidence(
     failure or missing ruling here removes the claim (real runs only).
     """
     by_index: dict[int, list[dict]] = {}
+
+    def quotation(finding: dict) -> str:
+        # Legacy in-memory findings lacked this additive field. New findings keep
+        # their permissible statement and attested source wording separate.
+        return "\n".join(finding.get("source_quotes") or [finding["finding"]])
+
     for finding in assessed:
         if finding["status"] == "research_gap":
             continue
@@ -1663,7 +1705,7 @@ async def _apply_finding_confidence(
             }.values()
         )
         claim_candidates.append((claim, candidates))
-        pairs.extend((claim, f["finding"]) for f in candidates)
+        pairs.extend((claim, quotation(f)) for f in candidates)
     cost = 0.0
     tokens_in = tokens_out = 0
     try:
@@ -1679,23 +1721,33 @@ async def _apply_finding_confidence(
         matched = [
             f
             for f, ok in zip(candidates, rulings[offset : offset + len(candidates)], strict=False)
-            if ok and _numbers_grounded(claim, f["finding"])
+            if ok
+            and _numbers_grounded(claim, quotation(f))
+            and _claim_scope_grounded(claim, quotation(f))
         ]
         offset += len(candidates)
         if not matched:
             # Some sentences legitimately combine two independently cited
             # observations. Check their quotations together, then apply the
             # weakest judgment of the set. Never treat the citation as a match.
-            if len(candidates) > 1 and len(rulings) == len(pairs):
+            if (
+                len(candidates) > 1
+                and len(rulings) == len(pairs)
+                and not any(f["evidence_role"] == "measured_fact" for f in candidates)
+            ):
                 try:
                     combined, c, ti, to = await _verifier_verdicts(
-                        [(claim, "\n".join(f["finding"] for f in candidates))]
+                        [(claim, "\n".join(quotation(f) for f in candidates))]
                     )
                     cost += c
                     tokens_in += ti
                     tokens_out += to
-                    if combined == [True] and _numbers_grounded(
-                        claim, "\n".join(f["finding"] for f in candidates)
+                    if (
+                        combined == [True]
+                        and _numbers_grounded(claim, "\n".join(quotation(f) for f in candidates))
+                        and _claim_scope_grounded(
+                            claim, "\n".join(quotation(f) for f in candidates)
+                        )
                     ):
                         matched = candidates
                 except Exception as exc:  # noqa: BLE001
@@ -1705,11 +1757,32 @@ async def _apply_finding_confidence(
                 continue
         if all(f["status"] == "established" for f in matched):
             continue
+        # A cultural occurrence, including a blog's description of its audience,
+        # cannot authorize a claim about what that population generally does.
+        if any(
+            f["evidence_role"] == "cultural_signal" for f in matched
+        ) and _population_generalization(claim):
+            draft = draft.replace(claim, "", 1)
+            continue
         # Plain-language qualification is part of the final checked claim. The
         # source's limited claim is attributed rather than upgraded to a fact.
+        publishers = {
+            a["publisher"] for f in matched for a in f["source_assessments"] if a["publisher"]
+        }
+        publisher = next(iter(publishers)) if len(publishers) == 1 else "The cited sources"
+        needs_method = any(
+            f["evidence_role"] == "measured_fact"
+            and any(a["methodology"] == "unverified" for a in f["source_assessments"])
+            for f in matched
+        )
         prefix = (
-            "An emerging cultural signal suggests that "
+            "In one cited cultural account, "
             if all(f["status"] == "emerging_signal" for f in matched)
+            else f"{publisher} reports, without a verified method, that "
+            if needs_method and len(publishers) == 1
+            else f"According to {publisher}, "
+            if len(publishers) == 1
+            and not any(f["evidence_role"] == "company_interpretation" for f in matched)
             else "According to company material, "
             if all(
                 f["evidence_role"] == "company_interpretation"
@@ -1840,7 +1913,9 @@ async def synthesizer_node(state: AgentState) -> dict:
             [
                 f"{markers} Domain: {finding['domain']} | Module: {finding['module']} "
                 f"| {finding['status']} ({finding['confidence']} confidence) "
-                f'| Role: {finding["evidence_role"]} | Snippet: "{finding["finding"]}"',
+                f'| Role: {finding["evidence_role"]} | Permissible finding: "{finding["finding"]}"',
+                f'    Attested quotation: "{"; ".join(finding["source_quotes"])}"',
+                f"    Requested scope: {finding['scope']}",
                 f"    Sources: {', '.join(finding['source_urls'])}",
                 f"    Caveats: {'; '.join(finding['caveats']) or 'none'}",
                 "",
@@ -1850,9 +1925,7 @@ async def synthesizer_node(state: AgentState) -> dict:
     gaps = [f for f in assessed if f["status"] == "research_gap"]
     if gaps:
         evidence_text += "\nResearch gaps (do not cite as factual findings):\n" + "\n".join(
-            f"- {f['domain']}/{f['module']}: evidence is unsuitable to establish "
-            f"the task (task {f['task_id']})."
-            for f in gaps
+            f"- {f['domain']}/{f['module']}: {f['finding']} (task {f['task_id']})." for f in gaps
         )
     if not evidence_lines:
         evidence_text += "No attested, suitable findings. State the research gap; do not report factual findings."
@@ -2027,6 +2100,7 @@ async def synthesizer_node(state: AgentState) -> dict:
         "draft_report": draft,
         "sources": sources,
         "findings": assessed,
+        "judgment_applied": True,
         "human_feedback": None,
         **_acc(state, cost, i, o),
     }
@@ -2095,6 +2169,12 @@ def hitl_gate_node(state: AgentState) -> dict:
 
 
 def finalizer_node(state: AgentState) -> dict:
+    if (
+        state.get("tasks")
+        and get_run_config().llm_mode != "fake"
+        and not state.get("judgment_applied")
+    ):
+        return {"final_report": None, "error": "finding judgment did not complete"}
     return {"final_report": state.get("draft_report")}
 
 

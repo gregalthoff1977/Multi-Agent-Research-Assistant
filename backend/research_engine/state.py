@@ -55,6 +55,8 @@ class AgentState(TypedDict, total=False):
     contradictions: list[dict[str, Any]]
     # Structured, attested findings for this draft; recomputed on each rework.
     findings: list[dict[str, Any]]
+    # Set only by the synthesis path after claim/finding judgment completes.
+    judgment_applied: bool
     human_feedback: str | None
     rework_count: int
     approved: bool | None
