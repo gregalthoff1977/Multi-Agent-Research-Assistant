@@ -591,8 +591,8 @@ async def test_evidence_without_a_source_url_is_refused_not_invented(db, owner):
     assert await _count(db, Source) == 0
 
 
-async def test_a_contradiction_cannot_claim_unsupported_evidence_precision(db, owner):
-    """Two evidence rows carrying the same quotation: the refinement must decline."""
+async def test_identical_evidence_across_tasks_is_persisted_once_and_stays_precise(db, owner):
+    """One source quotation is one evidence fact even when two tasks discover it."""
     run = await run_lifecycle.create_run(
         db, owner_id=owner["user_id"], project_id=owner["project_id"], question=QUESTION
     )
@@ -606,10 +606,11 @@ async def test_a_contradiction_cannot_claim_unsupported_evidence_precision(db, o
     )
     await db.commit()
 
+    assert await _count(db, Evidence, run_id=run.id) == 2
     row = (await db.execute(select(Contradiction))).scalar_one()
     assert row.detection_state == "DETECTED", "the sources resolve, so the pair is real"
-    assert row.evidence_a_id is None, "an ambiguous quotation must not pick a row"
-    assert row.evidence_b_id is None, "and half a resolved pair is not a pair"
+    assert row.evidence_a_id is not None, "deduplication leaves one precise anchor"
+    assert row.evidence_b_id is not None
 
 
 async def test_a_pair_naming_an_unknown_source_is_not_detected(db, owner):
