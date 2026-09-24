@@ -54,7 +54,10 @@ LIST_MARKER_RE = re.compile(r"^(?:[-*+]\s+|\d+[.)]\s+)")
 # bare initial. Deliberately conservative — over-splitting a claim is worse than
 # under-splitting it, because each fragment then gets judged against too little evidence.
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z(\[])")
-ABBREV_TAIL_RE = re.compile(r"\b(?:e\.g|i\.e|vs|etc|Dr|Mr|Ms|Inc|Ltd|Fig|No|approx|cf)\.$", re.I)
+ABBREV_TAIL_RE = re.compile(
+    r"\b(?:e\.g|i\.e|U\.S|U\.K|vs|etc|Dr|Mr|Ms|Inc|Ltd|Fig|No|approx|cf)\.$",
+    re.I,
+)
 
 #: A sentence shorter than this, or containing no letters, is a fragment rather than a
 #: claim. Named because the graph's fidelity pass applies the same floor and the two must
