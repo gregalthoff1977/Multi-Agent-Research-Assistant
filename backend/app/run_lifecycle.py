@@ -428,7 +428,29 @@ async def record_evidence(
         evidence_by_quote=evidence_by_quote,
         watermark=watermark,
         source_count=len(sources_by_url),
-        evidence_count=len([e for e in evidence if isinstance(e, dict)]),
+        # Report what actually landed in the evidence ledger, not the number of
+        # executor observations offered to this function. Identical quotations can
+        # now be discovered by multiple atomic tasks but persist as one evidence fact.
+        evidence_count=len(
+            {
+                evidence_id
+                for evidence_ids in evidence_by_quote.values()
+                for evidence_id in evidence_ids
+            }
+        )
+        + len(
+            {
+                row_id
+                for row_id, in (
+                    await db.execute(
+                        select(Evidence.id).where(
+                            Evidence.run_id == run.id,
+                            Evidence.provenance_state == "UNATTESTED",
+                        )
+                    )
+                ).all()
+            }
+        ),
     )
 
 
