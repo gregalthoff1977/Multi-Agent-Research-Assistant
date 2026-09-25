@@ -1443,6 +1443,7 @@ def create_sidecar_app(
                     # only to install the corpus port — which is a different thing, and
                     # mistaking one for the other is how the server shipped without this.
                     "corpus_mode": bool(run.corpus_mode),
+                    "output_mode": "package",
                 }
                 question, depth = run.question, run.depth
                 run_routing = run.model_routing
@@ -2698,6 +2699,18 @@ def create_sidecar_app(
         from app.api.v1.runs import export_markdown
 
         return await export_markdown(run_id, revision_version, db, user)
+
+    @api.get("/runs/{run_id}/research-package")
+    @delegates_to("app.api.v1.runs:get_research_package")
+    async def v2_research_package(
+        run_id: uuid.UUID,
+        revision_version: int | None = None,
+        db: AsyncSession = Depends(get_db),
+        user: User = Depends(get_local_user),
+    ):
+        from app.api.v1.runs import get_research_package
+
+        return await get_research_package(run_id, revision_version, db, user)
 
     @api.get("/runs/{run_id}/export.pdf", status_code=501)
     async def v2_export_pdf(run_id: uuid.UUID):

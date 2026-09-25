@@ -107,8 +107,10 @@ export function RunWorkspace({
 
   const tabs: { id: Tab; label: string; count?: number | null }[] = [
     ...(graph.plans.length > 0 ? [{ id: "plan" as const, label: "Plan" }] : []),
-    { id: "report", label: "Report" },
-    { id: "claims", label: "Claims", count: totals.claims.length },
+    { id: "report", label: graph.revisions.at(-1)?.research_package ? "Findings" : "Report" },
+    ...(!graph.revisions.at(-1)?.research_package
+      ? [{ id: "claims" as const, label: "Claims", count: totals.claims.length }]
+      : []),
     { id: "evidence", label: "Evidence", count: totals.evidence },
     { id: "sources", label: "Sources", count: totals.sources },
     { id: "contradictions", label: "Contradictions", count: totals.contradictions },

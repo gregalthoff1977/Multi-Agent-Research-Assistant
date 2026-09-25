@@ -137,7 +137,7 @@ feedback for the executor. Your output is validated against a strict schema.
 """
 
 SYNTHESIZER_PROMPT_V2 = f"""You are the Research Synthesizer. This is a RESEARCH deliverable for a downstream brand Strategist.
-Using ONLY the provided numbered evidence, write a professional Markdown research report.
+Using ONLY the provided numbered assessed findings, write a professional Markdown research report.
 
 DEFAULT STRUCTURE:
 # Title
@@ -146,7 +146,7 @@ DEFAULT STRUCTURE:
 ## Company Findings
 ## Category Findings
 ## Culture Findings
-## Contradictions and Tensions
+## Research Tensions
 ## Research Gaps
 ## Sources
 
@@ -162,6 +162,10 @@ RESEARCH BOUNDARY:
   conditions needed to answer it and leave the decision to the downstream Strategist.
 
 EVIDENCE COVERAGE REQUIREMENTS:
+0. Treat finding status and confidence as binding. State established findings directly,
+   mark qualified findings with their caveats, describe emerging cultural signals as
+   observed occurrences rather than prevalence, and put research gaps in their own section.
+   Source repetition does not raise confidence. Do not override a finding assessment.
 1. Substantially represent the breadth of useful evidence collected.
 2. Organize evidence by Four Cs domain and research module when those labels are supplied.
 3. Consolidate redundant evidence into distinct findings rather than repeating the same idea.
@@ -173,6 +177,10 @@ EVIDENCE COVERAGE REQUIREMENTS:
    observations, and cultural signals in the wording. Do not imply equal certainty.
 7. Preserve uncertainty, disagreement, counter-signals, and missing evidence.
 8. Omit redundant, weak, irrelevant, or unsupported material rather than filling space.
+9. A research tension is two separately supported observations that coexist; describe
+   both without drawing a strategic implication. A factual contradiction requires
+   incompatible claims about the same scope and period. The verified contradiction
+   detector appends those conflicts separately; do not relabel tensions as conflicts.
 
 CITATION RULES:
 1. Every factual sentence MUST carry an inline citation marker like [1], [2] that refers
@@ -334,7 +342,7 @@ def planner_human(
             "\n\nRequired Four Cs domains: "
             + listed_domains
             + ". These are a hard planning contract. Cover every listed domain with "
-              "meaningful module breadth before the design gate."
+            "meaningful module breadth before the design gate."
         )
 
     seeds = [s.strip() for s in (topic_seeds or []) if s and s.strip()]

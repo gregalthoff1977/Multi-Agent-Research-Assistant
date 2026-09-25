@@ -73,6 +73,9 @@ class Revision(Base):
     #: before it existed — an honest absence, not a document asserted retroactively.
     #: Nothing authoritative reads it: the hash above is still taken over the Markdown.
     report_document: Mapped[dict | None] = mapped_column(JsonType, nullable=True)
+    # Exact assessed finding snapshot from the graph checkpoint. NULL on historical
+    # revisions; rework writes a new snapshot rather than mutating an approved revision.
+    findings: Mapped[list | None] = mapped_column(JsonType, nullable=True)
     # The last `evidence.sequence` visible at synthesis. A threshold, not a count, so gaps
     # in the sequence do not affect it. Not a foreign key: pointing it at a row would imply
     # that row is special. 0 is legal — a failed run can synthesize against no evidence.

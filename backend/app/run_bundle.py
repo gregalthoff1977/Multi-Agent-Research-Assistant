@@ -210,6 +210,7 @@ async def assemble_with_reason(
             evidence=evidence_dicts,
             sources=source_dicts,
             contradictions=contradiction_dicts,
+            findings=revision.findings,
             models=run.model_routing or {},
             cost_usd=float(run.cost_usd),
             tokens_input=run.tokens_input,

@@ -39,6 +39,7 @@ SHARED_OWNERSHIP: dict[str, str] = {
     "POST /runs/{run_id}/plan-review": "app.api.v1.runs",
     "POST /runs/{run_id}/report-review": "app.api.v1.runs",
     "GET /runs/{run_id}/export.md": "app.api.v1.runs",
+    "GET /runs/{run_id}/research-package": "app.api.v1.runs",
     "POST /runs/{run_id}/cancel": "app.api.v1.runs",
     "POST /runs/{run_id}/archive": "app.api.v1.runs",
     "POST /runs/{run_id}/unarchive": "app.api.v1.runs",

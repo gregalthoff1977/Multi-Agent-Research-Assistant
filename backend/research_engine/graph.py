@@ -32,7 +32,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field, model_validator
 
-from research_engine import claims, contradictions, outlines, prompts
+from research_engine import claims, contradictions, findings, outlines, prompts, research_package
 from research_engine.events import emit
 from research_engine.llm_factory import (
     estimate_cost,
@@ -142,7 +142,21 @@ def _looks_like_quota(msg: str) -> bool:
     )
 
 
-async def _structured(role: str, messages: list, schema):
+async def _logged_model_call(stage: str, invocation):
+    """Count actual provider attempts by stage using the run's logging context."""
+    started = time.monotonic()
+    try:
+        return await invocation
+    finally:
+        if get_run_config().output_mode == "package" and get_run_config().llm_mode == "real":
+            logger.info(
+                "research_model_call",
+                stage=stage,
+                elapsed_ms=round((time.monotonic() - started) * 1000),
+            )
+
+
+async def _structured(role: str, messages: list, schema, *, stage: str | None = None):
     """Invoke a role's model and return (parsed_model_or_None, cost, in_tok, out_tok).
 
     Real models use with_structured_output(include_raw=True) so usage_metadata is
@@ -151,7 +165,7 @@ async def _structured(role: str, messages: list, schema):
     _last_api_error.set(None)
     model = get_llm(role)
     if get_run_config().llm_mode == "fake":
-        resp = await model.ainvoke(messages)
+        resp = await _logged_model_call(stage or role, model.ainvoke(messages))
         cost = estimate_cost(resp, role)
         i, o = token_counts(resp)
         try:
@@ -162,7 +176,7 @@ async def _structured(role: str, messages: list, schema):
 
     structured = model.with_structured_output(schema, include_raw=True)
     try:
-        result = await structured.ainvoke(messages)
+        result = await _logged_model_call(stage or role, structured.ainvoke(messages))
     except Exception as e:  # noqa: BLE001
         # with_structured_output can RAISE (not just set parsing_error) when a model
         # returns output the schema rejects — e.g. a local 7B emitting an out-of-range
@@ -210,9 +224,13 @@ def _acc(state: AgentState, cost: float, i: int, o: int) -> dict:
 _FOUR_C_DOMAINS = {"consumer", "company", "category", "culture"}
 
 
-def _planner_coverage_issues(required_domains: tuple[str, ...] | list[str], tasks: list[dict]) -> list[str]:
+def _planner_coverage_issues(
+    required_domains: tuple[str, ...] | list[str], tasks: list[dict]
+) -> list[str]:
     """Deterministic checks for the researcher's explicit Four Cs contract."""
-    requested = {str(d).lower() for d in (required_domains or ()) if str(d).lower() in _FOUR_C_DOMAINS}
+    requested = {
+        str(d).lower() for d in (required_domains or ()) if str(d).lower() in _FOUR_C_DOMAINS
+    }
     if not requested:
         return []
 
@@ -243,6 +261,7 @@ def _planner_coverage_issues(required_domains: tuple[str, ...] | list[str], task
         issues.append("insufficient module breadth: " + ", ".join(thin))
 
     return issues
+
 
 async def planner_node(state: AgentState) -> dict:
     sid = state["session_id"]
@@ -596,6 +615,7 @@ def _citable_evidence(evidence: list[dict] | None) -> list[dict]:
         and not e.get("snippet_unverified")
     ]
 
+
 def _task_key(task: dict) -> str:
     """Verdicts and retries are keyed by string — the checkpointer stores state as JSON."""
     return str(task.get("id"))
@@ -756,7 +776,7 @@ async def _forced_submit(
                 model = get_llm("executor").bind_tools(
                     [submit_evidence], tool_choice="submit_evidence"
                 )
-                resp = await model.ainvoke(messages)
+                resp = await _logged_model_call("executor", model.ainvoke(messages))
                 await charge(estimate_cost(resp, "executor"), *token_counts(resp))
                 calls = [
                     c
@@ -879,7 +899,7 @@ async def _research_one(state: AgentState, task: dict, guard: _BudgetGuard) -> d
             # Enough sources are in hand; the forced pass below turns them into evidence.
             logger.info("executor_read_limit", session_id=sid, task_id=task["id"])
             break
-        resp = await model.ainvoke(messages)
+        resp = await _logged_model_call("executor", model.ainvoke(messages))
         round_cost = estimate_cost(resp, "executor")
         cost += round_cost
         await guard.add(round_cost)
@@ -1222,6 +1242,7 @@ async def _criticize_one(
 
 async def critic_node(state: AgentState) -> dict:
     """Grade every task researched this round, concurrently."""
+    started = time.monotonic()
     sid = state["session_id"]
     cfg = get_run_config()
     pending = _pending(state, cfg.max_critic_loops)
@@ -1265,6 +1286,11 @@ async def critic_node(state: AgentState) -> dict:
             detail={"task_id": key, **verdict.model_dump()},
         )
 
+    logger.info(
+        "critic_round_summary",
+        tasks=len(pending),
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+    )
     return {
         "verdicts": verdicts,
         "retries": retries,
@@ -1316,6 +1342,7 @@ _VLABEL_RE = re.compile(r"^\*\*[^*]+\*\*\s*:")
 # rejected); literal number/percentage/year matching is deterministic and catches the
 # drift class the judge actually ruled NO on — invented figures and wrong magnitudes.
 _VNUM_RE = re.compile(r"\d+(?:\.\d+)?%?|\b\d{4}\b")
+_VERIFIER_BATCH_SIZE = 4
 
 
 def _claim_numbers(claim: str) -> list[str]:
@@ -1329,6 +1356,42 @@ def _numbers_grounded(claim: str, snippets: str) -> bool:
     return all(
         re.search(rf"(?<![0-9.]){re.escape(n)}(?![0-9]|\\.\\d)", snippets)
         for n in _claim_numbers(claim)
+    )
+
+
+def _claim_scope_grounded(claim: str, quotations: str) -> bool:
+    """Block common enlargements of a quotation's population, product, or geography."""
+    c = re.sub(r"[-‐‑–]", " ", claim.lower())
+    q = re.sub(r"[-‐‑–]", " ", quotations.lower())
+    for term in ("cold brew", "iced coffee", "gen z", "millennials"):
+        if re.search(rf"\b{term}\b", c) and not re.search(rf"\b{term}\b", q):
+            return False
+    if re.search(r"\b(?:ready to drink|rtd)\b", c) and not re.search(
+        r"\b(?:ready to drink|rtd)\b", q
+    ):
+        return False
+    if re.search(r"\bu\.s\.|\bunited states\b", c) and not re.search(
+        r"\bu\.s\.|\bunited states\b|\bamerican\b", q
+    ):
+        return False
+    if re.search(r"\b(?:younger consumers|young people)\b", c) and not re.search(
+        r"\b(?:younger consumers|young people|young adults)\b", q
+    ):
+        return False
+    for term in ("largest", "fastest growing", "majority"):
+        if re.search(rf"\b{term}\b", c) and not re.search(rf"\b{term}\b", q):
+            return False
+    return True
+
+
+def _population_generalization(claim: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:gen z|millennials|consumers|young people|young adults)\b.{0,110}"
+            r"\b(?:prefer|choose|drink|share|demand|want|seek|are|is|view|use|buy)\b",
+            claim.lower(),
+            re.I,
+        )
     )
 
 
@@ -1412,11 +1475,16 @@ async def _verifier_verdicts(
     the pass is measured by that judge, so the in-graph check must rule like it.
     """
     llm = get_llm("critic")
-    BATCH = 4
     verdicts: list[bool] = []
     cost = i_tot = o_tot = 0
-    for start in range(0, len(claim_evidence), BATCH):
-        batch = claim_evidence[start : start + BATCH]
+    for start in range(0, len(claim_evidence), _VERIFIER_BATCH_SIZE):
+        batch = claim_evidence[start : start + _VERIFIER_BATCH_SIZE]
+        logger.info(
+            "citation_verifier_batch_started",
+            batch_index=start // _VERIFIER_BATCH_SIZE + 1,
+            total_batches=(len(claim_evidence) + _VERIFIER_BATCH_SIZE - 1) // _VERIFIER_BATCH_SIZE,
+            pair_count=len(batch),
+        )
         blocks = [
             f"Claim {i}: {claim}\nEvidence {i}:\n{snippets}"
             for i, (claim, snippets) in enumerate(batch, start=1)
@@ -1437,25 +1505,28 @@ async def _verifier_verdicts(
             for m in re.finditer(r"Claim\s+(\d+)\s*:\s*(YES|NO)", text, re.IGNORECASE)
         }
         for i in range(1, len(batch) + 1):
-            # A claim the verifier failed to rule on keeps its citations: stripping is
-            # only for claims explicitly judged unsupported.
-            verdicts.append(ruled.get(i, True))
+            # An absent ruling cannot authorize a finding or a cited assertion.
+            verdicts.append(ruled.get(i, False))
     return verdicts, cost, i_tot, o_tot
 
 
 async def _verify_citation_fidelity(
-    sid: str, draft: str, sources: list[dict]
+    sid: str,
+    draft: str,
+    sources: list[dict],
+    verified_single_quotes: dict[str, str] | None = None,
 ) -> tuple[str, float, int, int]:
     """Check every cited claim against its own sources' snippets; strip markers the
     evidence does not back. Returns (draft, cost, tokens_in, tokens_out)."""
-    claims = _cited_claims(draft)
-    if not claims or not sources:
+    started = time.monotonic()
+    cited_claims = _cited_claims(draft)
+    if not cited_claims or not sources:
         return draft, 0.0, 0, 0
 
     by_index = {s.get("index"): s for s in sources if isinstance(s, dict)}
     claim_evidence: list[tuple[str, str]] = []
     mechanically_unsupported: set[str] = set()
-    for claim in claims:
+    for claim in cited_claims:
         if _VDEICTIC_RE.match(claim) or _VLABEL_RE.match(claim):
             # The judge rules on this sentence ALONE (anaphor without referent / label
             # no snippet contains), where it reads unsupported. Strip deterministically;
@@ -1481,7 +1552,7 @@ async def _verify_citation_fidelity(
         # Deterministic pre-check before any model rules: a number the cited snippets do
         # not contain verbatim can never be "supported", whatever a small local verifier
         # says (it rubber-stamped invented figures in the second Ollama eval).
-        if not _numbers_grounded(claim, snippets):
+        if not _numbers_grounded(claim, snippets) or not _claim_scope_grounded(claim, snippets):
             logger.warning(
                 "citation_verify_number_mismatch",
                 session_id=sid,
@@ -1507,6 +1578,18 @@ async def _verify_citation_fidelity(
     if verdicts:  # empty on verifier failure — nothing was ruled, nothing is stripped
         for (claim, snippets), ok in zip(todo, verdicts, strict=True):
             ok_by_claim[claim] = ok
+            # A successful ruling against ONE cited quotation is an exact claim →
+            # evidence lineage. Reuse it in finding alignment instead of paying for
+            # the identical semantic judgment again. Multi-quote URL citations do
+            # not identify which quote supported the claim.
+            cited = set(claims.extract_citations(claim))
+            if ok and verified_single_quotes is not None and len(cited) == 1:
+                source = by_index[next(iter(cited))]
+                quotes = source.get("snippets") or (
+                    [source["snippet"]] if source.get("snippet") else []
+                )
+                if len(quotes) == 1:
+                    verified_single_quotes[claim] = quotes[0]
             if not ok:
                 logger.warning(
                     "citation_verify_critic_rejected",
@@ -1517,7 +1600,7 @@ async def _verify_citation_fidelity(
 
     result = draft
     stripped = 0
-    for claim in claims:
+    for claim in cited_claims:
         if ok_by_claim.get(claim, claim not in mechanically_unsupported):
             continue
         stripped += 1
@@ -1532,8 +1615,16 @@ async def _verify_citation_fidelity(
             "agent_log",
             agent="synthesizer",
             message=f"Citation check: {stripped} claim(s) not supported by their snippets — markers removed",
-            detail={"stripped": stripped, "checked": len(claims)},
+            detail={"stripped": stripped, "checked": len(cited_claims)},
         )
+    logger.info(
+        "citation_fidelity_summary",
+        cited_claims=len(cited_claims),
+        semantic_pairs=len(todo),
+        verifier_batches=(len(todo) + _VERIFIER_BATCH_SIZE - 1) // _VERIFIER_BATCH_SIZE,
+        claims_removed=stripped,
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+    )
     return result, cost, i_tot, o_tot
 
 
@@ -1569,7 +1660,9 @@ async def contradiction_detector_node(state: AgentState) -> dict:
             f"{contradictions.build_detector_input(by_source)}"
         ),
     ]
-    parsed, cost, i, o = await _structured("critic", messages, ContradictionReport)
+    parsed, cost, i, o = await _structured(
+        "critic", messages, ContradictionReport, stage="contradiction_detector"
+    )
     if parsed is None:
         reason = _last_api_error.get() or "unparseable response"
         await emit(
@@ -1630,7 +1723,252 @@ def _number_sources(evidence: list[dict]) -> tuple[list[dict], dict[str, int]]:
     return sources, seen
 
 
+_ALIGNMENT_STOPWORDS = frozenset(
+    "a an and are as at be been by for from has have in into is it its of on or "
+    "that the their there these this to was were which with".split()
+)
+_MAX_QUOTATIONS_PER_CITATION = 2
+
+
+def _alignment_terms(value: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", value.lower())) - _ALIGNMENT_STOPWORDS
+
+
+async def _apply_finding_confidence(
+    draft: str,
+    assessed: list[dict],
+    seen: dict[str, int],
+    verified_single_quotes: dict[str, str] | None = None,
+) -> tuple[str, float, int, int]:
+    """Bind each cited claim to the *quotation* it uses before applying judgment.
+
+    A URL can contain several attested quotes with different roles and suitability.
+    The citation is a URL, not a quote ID. Match its findings to that URL's own
+    evidence IDs/quotes, eliminate scope and number mismatches, then verify at most
+    the two closest distinct quotations per citation. Reuse an exact quotation
+    already verified by citation fidelity. No model ruling or no matching eligible
+    quotation removes the claim (real runs only).
+    """
+    started = time.monotonic()
+    by_index: dict[int, list[tuple[dict, str, str]]] = {}
+    for finding in assessed:
+        if finding["status"] == "research_gap":
+            continue
+        urls = finding["source_urls"]
+        quotes = finding.get("source_quotes") or [finding["finding"]] * len(urls)
+        ids = finding.get("evidence_ids") or [""] * len(urls)
+        for url, quote, eid in zip(urls, quotes, ids, strict=False):
+            if eid and eid != findings.evidence_id(url, quote):
+                continue  # broken evidence lineage cannot authorize a claim
+            if url in seen:
+                by_index.setdefault(seen[url], []).append((finding, quote, eid))
+    cited = _cited_claims(draft)
+    candidate_count = eliminated = 0
+    claim_candidates: list[tuple[str, list[tuple[dict, str, str]]]] = []
+    for claim in cited:
+        selected: list[tuple[dict, str, str]] = []
+        for n in dict.fromkeys(claims.extract_citations(claim)):
+            entries = by_index.get(n, [])
+            candidate_count += len(entries)
+            groups: dict[str, list[tuple[dict, str, str]]] = {}
+            for entry in entries:
+                finding, quote, _ = entry
+                if (
+                    _numbers_grounded(claim, quote)
+                    and _claim_scope_grounded(claim, quote)
+                    and not (
+                        finding["evidence_role"] == "cultural_signal"
+                        and _population_generalization(claim)
+                    )
+                ):
+                    groups.setdefault(quote, []).append(entry)
+            # Use distinctive overlapping words only to SELECT candidates, never
+            # as a verdict. No lexical connection is insufficient lineage: fail closed.
+            corpus_terms = {quote: _alignment_terms(quote) for quote in groups}
+            claim_terms = _alignment_terms(claim)
+            frequency = {
+                term: sum(term in terms for terms in corpus_terms.values()) for term in claim_terms
+            }
+            ranked = sorted(
+                (
+                    (sum(1 / frequency[t] for t in (claim_terms & terms)), quote)
+                    for quote, terms in corpus_terms.items()
+                    if claim_terms & terms
+                ),
+                key=lambda row: -row[0],
+            )
+            direct = (verified_single_quotes or {}).get(claim)
+            if direct in groups:
+                ranked = [(float("inf"), direct)] + [row for row in ranked if row[1] != direct]
+            for _, quote in ranked[:_MAX_QUOTATIONS_PER_CITATION]:
+                selected.extend(groups[quote])
+        claim_candidates.append((claim, selected))
+    eliminated = candidate_count - sum(len(entries) for _, entries in claim_candidates)
+    # Semantic judgments are keyed to an exact claim and quotation. If the same
+    # sentence recurs, or two task findings use one attested quote, ask the model once.
+    pairs = list(
+        dict.fromkeys(
+            (claim, quote)
+            for claim, candidates in claim_candidates
+            for _, quote, _ in candidates
+            if (verified_single_quotes or {}).get(claim) != quote
+        )
+    )
+    cost = 0.0
+    tokens_in = tokens_out = 0
+    try:
+        rulings, c, ti, to = await _verifier_verdicts(pairs) if pairs else ([], 0, 0, 0)
+        cost += c
+        tokens_in += ti
+        tokens_out += to
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("finding_alignment_unavailable", error=str(exc)[:200])
+        rulings = []
+    approved = dict(zip(pairs, rulings, strict=False))
+    removed = qualified = accepted = combined_calls = 0
+    for claim, candidates in claim_candidates:
+        matched = [
+            f
+            for f, quote, _ in candidates
+            if (verified_single_quotes or {}).get(claim) == quote or approved.get((claim, quote))
+        ]
+        if not matched:
+            # Some sentences legitimately combine two independently cited
+            # observations. Check their quotations together, then apply the
+            # weakest judgment of the set. Never treat the citation as a match.
+            if (
+                len({quote for _, quote, _ in candidates}) > 1
+                and len(rulings) == len(pairs)
+                and not any(f["evidence_role"] == "measured_fact" for f, _, _ in candidates)
+            ):
+                try:
+                    combined_quotes = "\n".join(dict.fromkeys(quote for _, quote, _ in candidates))
+                    combined, c, ti, to = await _verifier_verdicts([(claim, combined_quotes)])
+                    combined_calls += 1
+                    cost += c
+                    tokens_in += ti
+                    tokens_out += to
+                    if (
+                        combined == [True]
+                        and _numbers_grounded(claim, combined_quotes)
+                        and _claim_scope_grounded(claim, combined_quotes)
+                    ):
+                        matched = [f for f, _, _ in candidates]
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("finding_alignment_unavailable", error=str(exc)[:200])
+            if not matched:
+                draft = draft.replace(claim, "", 1)
+                removed += 1
+                continue
+        if all(f["status"] == "established" for f in matched):
+            accepted += 1
+            continue
+        # A cultural occurrence, including a blog's description of its audience,
+        # cannot authorize a claim about what that population generally does.
+        if any(
+            f["evidence_role"] == "cultural_signal" for f in matched
+        ) and _population_generalization(claim):
+            draft = draft.replace(claim, "", 1)
+            removed += 1
+            continue
+        # Plain-language qualification is part of the final checked claim. The
+        # source's limited claim is attributed rather than upgraded to a fact.
+        publishers = {
+            a["publisher"] for f in matched for a in f["source_assessments"] if a["publisher"]
+        }
+        publisher = next(iter(publishers)) if len(publishers) == 1 else "The cited sources"
+        needs_method = any(
+            f["evidence_role"] == "measured_fact"
+            and any(a["methodology"] == "unverified" for a in f["source_assessments"])
+            for f in matched
+        )
+        prefix = (
+            "In one cited cultural account, "
+            if all(f["status"] == "emerging_signal" for f in matched)
+            else f"{publisher} reports, without a verified method, that "
+            if needs_method and len(publishers) == 1
+            else f"According to {publisher}, "
+            if len(publishers) == 1
+            and not any(f["evidence_role"] == "company_interpretation" for f in matched)
+            else "According to company material, "
+            if all(
+                f["evidence_role"] == "company_interpretation"
+                and any(a["source_class"] == "primary_company" for a in f["source_assessments"])
+                for f in matched
+            )
+            else "The available evidence suggests that "
+        )
+        draft = draft.replace(claim, prefix + claim[0].lower() + claim[1:], 1)
+        qualified += 1
+    logger.info(
+        "finding_alignment_summary",
+        cited_claims=len(cited),
+        candidate_findings_considered=candidate_count,
+        eliminated_deterministically=eliminated,
+        semantic_pairs=len(pairs) + combined_calls,
+        verifier_batches=(len(pairs) + _VERIFIER_BATCH_SIZE - 1) // _VERIFIER_BATCH_SIZE
+        + combined_calls,
+        claims_removed=removed,
+        claims_qualified=qualified,
+        claims_accepted_unchanged=accepted,
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+    )
+    return draft, cost, tokens_in, tokens_out
+
+
+def _remove_uncited_claims(draft: str) -> str:
+    """Do not let a failed citation-repair pass leave unsupported facts in prose."""
+    skipping = False
+    in_sources = False
+    for raw in draft.splitlines():
+        line = raw.strip()
+        if _VSOURCES_RE.match(line):
+            in_sources = True
+        if in_sources:
+            continue
+        if line.startswith("#"):
+            skipping = bool(_VLIMITATIONS_HEADING_RE.match(line))
+            continue
+        if skipping or not line:
+            continue
+        for sentence in claims.split_sentences(_VLIST_MARKER_RE.sub("", line)):
+            sentence = sentence.strip()
+            if claims.is_claim_sentence(sentence) and not claims.CITE_RE.search(sentence):
+                draft = draft.replace(sentence, "", 1)
+    return draft
+
+
+def _market_scope_block(assessed: list[dict], seen: dict[str, int]) -> str:
+    """Surface cross-task market estimates whose definitions remain unreconciled."""
+    rows = []
+    visited = set()
+    by_evidence = {
+        eid: f for f in assessed if f["status"] != "research_gap" for eid in f["evidence_ids"]
+    }
+    for finding in assessed:
+        for comparison in finding.get("scope_comparisons", []):
+            other = by_evidence.get(comparison["other_evidence_id"])
+            pair = frozenset((finding["evidence_ids"][0], comparison["other_evidence_id"]))
+            if not other or pair in visited:
+                continue
+            visited.add(pair)
+            a = next((seen[u] for u in finding["source_urls"] if u in seen), None)
+            b = next((seen[u] for u in other["source_urls"] if u in seen), None)
+            if a and b:
+                rows.append(
+                    f"[{a}] concerns {finding['scope']['population']} "
+                    f"({finding['scope']['geography']}, {finding['scope']['time_period']}); "
+                    f"[{b}] concerns {other['scope']['population']} "
+                    f"({other['scope']['geography']}, {other['scope']['time_period']}). "
+                    "The category definitions and methods have not been reconciled; "
+                    "these estimates cannot be compared as equivalent."
+                )
+    return "## Market estimate scope\n\n" + "\n\n".join(rows) if rows else ""
+
+
 async def synthesizer_node(state: AgentState) -> dict:
+    if get_run_config().output_mode == "package" and get_run_config().llm_mode == "real":
+        return await research_package_node(state)
     sid = state["session_id"]
     await emit(
         sid,
@@ -1648,9 +1986,35 @@ async def synthesizer_node(state: AgentState) -> dict:
     # unrelated to the claim it was attached to — the same source is cited for roughly
     # eight different claims per report.
     citable_evidence = _citable_evidence(state.get("evidence", []))
+    if state.get("tasks") and get_run_config().llm_mode != "fake":
+        citable_evidence = [e for e in citable_evidence if e.get("attestation_grade")]
+        # SQL stores one Source per normalized URL. Give every finding the exact URL
+        # that source numbering will persist, even when two tasks used URL variants.
+        first_url: dict[str, str] = {}
+        citable_evidence = [
+            {**e, "source_url": first_url.setdefault(_norm_url(e["source_url"]), e["source_url"])}
+            for e in citable_evidence
+        ]
+    # Real-run retrieval stamps attestation on every verified chunk. Historical and
+    # scripted checkpoints can lack it; they stay in the source ledger for compatibility
+    # but never acquire a finding simply from having a nonempty snippet.
+    assessed = findings.build_findings(
+        citable_evidence, state.get("tasks") or [], state.get("contradictions") or []
+    )
+    if state.get("tasks") and get_run_config().llm_mode != "fake":
+        citable_ids = {
+            eid
+            for finding in assessed
+            if finding["status"] != "research_gap"
+            for eid in finding["evidence_ids"]
+        }
+        citable_evidence = [
+            e
+            for e in citable_evidence
+            if findings.evidence_id(e["source_url"], e["snippet"].strip()) in citable_ids
+        ]
     sources, seen = _number_sources(citable_evidence)
 
-    tasks_by_id = {str(t.get("id")): t for t in (state.get("tasks") or [])}
     numbered_evidence = [
         {
             "n": seen.get(e.get("source_url", ""), 0),
@@ -1662,21 +2026,32 @@ async def synthesizer_node(state: AgentState) -> dict:
     ]
 
     evidence_lines: list[str] = []
-    for ev in numbered_evidence:
-        # Snippet only — no key_fact. The executor's key_fact is a paraphrase, and a
-        # small synthesizer model that sees both writes from the paraphrase: the claim
-        # drifts past the verbatim text, and both this graph's fidelity check and the
-        # eval judge rule on the snippet alone (measured as the residual NO class in
-        # the second Ollama eval). What can be cited is exactly what is shown.
-        task = tasks_by_id.get(ev["task_id"], {})
-        domain = task.get("domain") or "unclassified"
-        module = task.get("module") or "unclassified"
-        evidence_lines.append(
-            f'[{ev["n"]}] Domain: {domain} | Module: {module} | Snippet: "{ev["snippet"]}"'
+    for finding in assessed:
+        if finding["status"] == "research_gap":
+            continue
+        markers = "".join(f"[{seen[u]}]" for u in finding["source_urls"] if u in seen)
+        if not markers:
+            continue
+        evidence_lines.extend(
+            [
+                f"{markers} Domain: {finding['domain']} | Module: {finding['module']} "
+                f"| {finding['status']} ({finding['confidence']} confidence) "
+                f'| Role: {finding["evidence_role"]} | Permissible finding: "{finding["finding"]}"',
+                f'    Attested quotation: "{"; ".join(finding["source_quotes"])}"',
+                f"    Requested scope: {finding['scope']}",
+                f"    Sources: {', '.join(finding['source_urls'])}",
+                f"    Caveats: {'; '.join(finding['caveats']) or 'none'}",
+                "",
+            ]
         )
-        evidence_lines.append(f"    Source: {ev['url']}")
-        evidence_lines.append("")  # blank separator
-    evidence_text = "Evidence for citation:\n" + "\n".join(evidence_lines)
+    evidence_text = "Assessed findings for citation:\n" + "\n".join(evidence_lines)
+    gaps = [f for f in assessed if f["status"] == "research_gap"]
+    if gaps:
+        evidence_text += "\nResearch gaps (do not cite as factual findings):\n" + "\n".join(
+            f"- {f['domain']}/{f['module']}: {f['finding']} (task {f['task_id']})." for f in gaps
+        )
+    if not evidence_lines:
+        evidence_text += "No attested, suitable findings. State the research gap; do not report factual findings."
 
     messages = [
         SystemMessage(content=prompts.SYNTHESIZER_PROMPT_V2),
@@ -1786,7 +2161,21 @@ async def synthesizer_node(state: AgentState) -> dict:
     # the snippets of its own cited sources, exactly as the eval judge rules. Runs after
     # the repair pass so a repair-introduced drift is caught too. Unsupported claims lose
     # their markers and carry a visible note rather than shipping a hollow citation.
-    draft, vcost, vi, vo = await _verify_citation_fidelity(sid, draft, sources)
+    draft = _remove_uncited_claims(draft)
+    verified_single_quotes: dict[str, str] = {}
+    draft, vcost, vi, vo = await _verify_citation_fidelity(
+        sid, draft, sources, verified_single_quotes
+    )
+    # An LLM can still phrase a cited, weakly supported observation as an established
+    # fact. Mark its actual support level after citation verification, leaving the
+    # original claim and marker intact for independent checking.
+    if get_run_config().llm_mode != "fake":
+        draft, fcost, fi, fo = await _apply_finding_confidence(
+            draft, assessed, seen, verified_single_quotes
+        )
+        cost += fcost
+        i += fi
+        o += fo
     logger.info(
         "synthesis_verified_draft",
         session_id=sid,
@@ -1812,6 +2201,10 @@ async def synthesizer_node(state: AgentState) -> dict:
             message=f"Surfaced {len(state['contradictions'])} conflicting claim pair(s) in the report",
         )
 
+    scope_block = _market_scope_block(assessed, seen)
+    if scope_block:
+        draft = contradictions.insert_block(draft, scope_block)
+
     await emit(
         sid,
         "agent_log",
@@ -1834,8 +2227,47 @@ async def synthesizer_node(state: AgentState) -> dict:
     return {
         "draft_report": draft,
         "sources": sources,
+        "findings": assessed,
+        "judgment_applied": True,
         "human_feedback": None,
         **_acc(state, cost, i, o),
+    }
+
+
+async def research_package_node(state: AgentState) -> dict:
+    """Conclude research from attested task evidence without generating report prose."""
+    started = time.monotonic()
+    nuggets = research_package.build_nuggets(
+        state.get("tasks") or [],
+        _citable_evidence(state.get("evidence") or []),
+        state.get("contradictions") or [],
+    )
+    result = research_package.package(
+        state["original_query"], nuggets, state.get("contradictions") or []
+    )
+    source_evidence = [
+        {
+            "source_url": e["url"],
+            "source_title": e["source"],
+            "snippet": e["quote"],
+        }
+        for n in nuggets
+        for e in n["evidence"]
+    ]
+    sources, _ = _number_sources(source_evidence)
+    logger.info(
+        "research_package_summary",
+        **result["summary"],
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+        model_calls=0,
+    )
+    return {
+        "findings": nuggets,
+        "research_package": result,
+        "draft_report": research_package.render_markdown(result),
+        "sources": sources,
+        "judgment_applied": True,
+        "human_feedback": None,
     }
 
 
@@ -1902,6 +2334,12 @@ def hitl_gate_node(state: AgentState) -> dict:
 
 
 def finalizer_node(state: AgentState) -> dict:
+    if (
+        state.get("tasks")
+        and get_run_config().llm_mode != "fake"
+        and not state.get("judgment_applied")
+    ):
+        return {"final_report": None, "error": "finding judgment did not complete"}
     return {"final_report": state.get("draft_report")}
 
 
@@ -2018,7 +2456,9 @@ def route_after_critic(state: AgentState) -> str:
     # difference between "we could not answer this" and a fluent report sourced from the
     # synthesizer's training data — the latter is what the citation-repair pass turns into
     # an artifact that *looks* verified while resolving to nothing.
-    if not _citable_evidence(state.get("evidence", [])):
+    if not _citable_evidence(state.get("evidence", [])) and not (
+        get_run_config().output_mode == "package" and get_run_config().llm_mode == "real"
+    ):
         return "failer"
     return "contradiction_detector"
 
@@ -2032,14 +2472,33 @@ def route_after_gate(state: AgentState) -> str:
 # ── Build ──────────────────────────────────────────────────────────────────────────
 
 
+def _timed_node(stage: str, node):
+    async def run(state: AgentState) -> dict:
+        started = time.monotonic()
+        try:
+            return await node(state)
+        finally:
+            if get_run_config().output_mode == "package" and get_run_config().llm_mode == "real":
+                logger.info(
+                    "research_stage_summary",
+                    session_id=state.get("session_id"),
+                    stage=stage,
+                    elapsed_ms=round((time.monotonic() - started) * 1000),
+                )
+
+    return run
+
+
 def build_graph(checkpointer):
     g = StateGraph(AgentState)
-    g.add_node("planner", planner_node)
+    g.add_node("planner", _timed_node("planner", planner_node))
     g.add_node("plan_gate", plan_gate_node)
-    g.add_node("executor", executor_node)
-    g.add_node("critic", critic_node)
-    g.add_node("contradiction_detector", contradiction_detector_node)
-    g.add_node("synthesizer", synthesizer_node)
+    g.add_node("executor", _timed_node("executor", executor_node))
+    g.add_node("critic", _timed_node("critic", critic_node))
+    g.add_node(
+        "contradiction_detector", _timed_node("contradiction_detector", contradiction_detector_node)
+    )
+    g.add_node("synthesizer", _timed_node("package_or_legacy_synthesis", synthesizer_node))
     g.add_node("hitl_gate", hitl_gate_node)
     g.add_node("finalizer", finalizer_node)
     g.add_node("failer", failer_node)

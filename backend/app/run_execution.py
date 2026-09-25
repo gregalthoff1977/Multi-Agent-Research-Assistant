@@ -128,6 +128,7 @@ async def run_config_for_run(db: AsyncSession, run: ResearchRun) -> RunConfig:
         # a run recorded as airgapped researched the open web until this line existed.
         # Desktop counterpart: `sidecar._drive_run`, which has always carried it.
         "corpus_mode": bool(run.corpus_mode),
+        "output_mode": "package",
     }
     # The demo rule, shared with the session worker and both desktop drivers — see
     # `app/services/run_config.py` for why it is one branch and why it has to be one home.
@@ -249,7 +250,16 @@ async def persist_outcome(
     report = outcome.report
     if report:
         result = await run_lifecycle.record_revision(
-            db, run, report_markdown=report, evidence_index=written
+            db,
+            run,
+            report_markdown=report,
+            evidence_index=written,
+            findings=(
+                values.get("findings")
+                if evidence_outcome == "READ" and (not run.demo or values.get("research_package"))
+                else None
+            ),
+            derive_claims=not bool(values.get("research_package") and evidence_outcome == "READ"),
         )
         revision_version = result.revision.version
         claim_count, link_count = result.claim_count, result.link_count

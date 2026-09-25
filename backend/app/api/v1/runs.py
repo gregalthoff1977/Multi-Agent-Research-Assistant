@@ -66,6 +66,7 @@ from app.services import model_routing
 from app.services.event_stream import sse_frames
 from app.services.sse import SSE_HEADERS
 from app.workers.dispatch import get_run_dispatcher
+from research_engine import research_package
 from research_engine.bundle import render_model_attribution_md, stamp_demo_md
 
 logger = structlog.get_logger()
@@ -284,6 +285,26 @@ async def project_run(db: AsyncSession, run: ResearchRun) -> dict:
                 # surface, not a dependency: `report_markdown` above remains what every
                 # existing client — and the frontend's citation renderer — reads.
                 "report_document": r.report_document,
+                **({"findings": r.findings} if r.findings is not None else {}),
+                **(
+                    {
+                        "research_package": research_package.package(
+                            run.question,
+                            r.findings,
+                            [
+                                {
+                                    "source_a": c.summary_a,
+                                    "source_b": c.summary_b,
+                                    "nature": c.nature,
+                                }
+                                for c in contradictions
+                                if c.detection_state == "DETECTED"
+                            ],
+                        )
+                    }
+                    if r.findings and all("evidence" in n and "id" in n for n in r.findings)
+                    else {}
+                ),
                 "evidence_watermark": r.evidence_watermark,
                 "created_at": r.created_at.isoformat(),
             }
@@ -880,6 +901,41 @@ async def _source_dicts(db: AsyncSession, run_id) -> list[dict]:
         .all()
     )
     return [{"index": s.citation_index, "url": s.url, "title": s.title or ""} for s in rows]
+
+
+@router.get("/{run_id}/research-package")
+async def get_research_package(
+    run_id: uuid.UUID,
+    revision_version: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Authoritative JSON for a specific immutable research revision."""
+    run = await _run_or_404(db, run_id, current_user.id)
+    revision = await _latest_revision(db, run, revision_version)
+    if not revision.findings or not all(
+        "id" in item and "evidence" in item for item in revision.findings
+    ):
+        raise NotFound("This revision predates structured research packages.")
+    conflicts = (
+        (
+            await db.execute(
+                select(Contradiction)
+                .where(
+                    Contradiction.run_id == run.id,
+                    Contradiction.detection_state == "DETECTED",
+                )
+                .order_by(Contradiction.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return research_package.package(
+        run.question,
+        revision.findings,
+        [{"source_a": c.summary_a, "source_b": c.summary_b, "nature": c.nature} for c in conflicts],
+    )
 
 
 @router.get("/{run_id}/export.md")

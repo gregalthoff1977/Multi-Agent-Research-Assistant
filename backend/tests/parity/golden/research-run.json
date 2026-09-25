@@ -33,6 +33,7 @@
         "corpus_mode": false,
         "demo": true,
         "skip_plan_gate": false,
+        "required_domains": null,
         "model_routing": {
           "planner": "google:gemini-2.5-flash",
           "executor": "google:gemini-2.5-flash",
@@ -59,6 +60,16 @@
               "id": "<int-id>",
               "query": "what retrieval-augmented generation is",
               "rationale": "define the mechanism before comparing it",
+              "domain": null,
+              "module": "",
+              "geography": "",
+              "population": "",
+              "time_period": "",
+              "evidence_type": "",
+              "preferred_source_types": [],
+              "freshness": "",
+              "minimum_source_quality": "medium",
+              "search_queries": [],
               "status": "pending",
               "subtopics": [],
               "include": true,
@@ -68,6 +79,16 @@
               "id": "<int-id>",
               "query": "when retrieval beats fine-tuning",
               "rationale": "the comparison the question actually asks for",
+              "domain": null,
+              "module": "",
+              "geography": "",
+              "population": "",
+              "time_period": "",
+              "evidence_type": "",
+              "preferred_source_types": [],
+              "freshness": "",
+              "minimum_source_quality": "medium",
+              "search_queries": [],
               "status": "pending",
               "subtopics": [],
               "include": true,
@@ -132,6 +153,7 @@
         "corpus_mode": false,
         "demo": true,
         "skip_plan_gate": false,
+        "required_domains": null,
         "model_routing": {
           "planner": "google:gemini-2.5-flash",
           "executor": "google:gemini-2.5-flash",
@@ -139,9 +161,9 @@
           "synthesizer": "google:gemini-2.5-flash",
           "chat": "google:gemini-2.5-flash"
         },
-        "cost_usd": 0.000225,
-        "tokens_input": 1000,
-        "tokens_output": 500,
+        "cost_usd": 0.000202,
+        "tokens_input": 900,
+        "tokens_output": 450,
         "elapsed_seconds": null,
         "citation_resolution_rate": null,
         "error_message": null,
@@ -158,6 +180,16 @@
               "id": "<int-id>",
               "query": "what retrieval-augmented generation is",
               "rationale": "define the mechanism before comparing it",
+              "domain": null,
+              "module": "",
+              "geography": "",
+              "population": "",
+              "time_period": "",
+              "evidence_type": "",
+              "preferred_source_types": [],
+              "freshness": "",
+              "minimum_source_quality": "medium",
+              "search_queries": [],
               "status": "pending",
               "subtopics": [],
               "include": true,
@@ -167,6 +199,16 @@
               "id": "<int-id>",
               "query": "when retrieval beats fine-tuning",
               "rationale": "the comparison the question actually asks for",
+              "domain": null,
+              "module": "",
+              "geography": "",
+              "population": "",
+              "time_period": "",
+              "evidence_type": "",
+              "preferred_source_types": [],
+              "freshness": "",
+              "minimum_source_quality": "medium",
+              "search_queries": [],
               "status": "pending",
               "subtopics": [],
               "include": true,
@@ -216,30 +258,6 @@
           "source_id": "<uuid>",
           "sequence": 2,
           "task_id": "1",
-          "snippet": "Retrieval-Augmented Generation (RAG) has emerged as a promising solution by incorporating knowledge from external databases. This enhances the accuracy and credibility of the generation, particularly for knowledge-intensive tasks, and allows for continuous knowledge updates and integration of domain-specific information.",
-          "content_hash": "<hash>",
-          "key_fact": "External-database knowledge improves accuracy and credibility and allows continuous updates.",
-          "provenance_state": "UNCHECKED",
-          "attested_against": null,
-          "attestation_run_at": null
-        },
-        {
-          "id": "<uuid>",
-          "source_id": "<uuid>",
-          "sequence": 3,
-          "task_id": "2",
-          "snippet": "Large pre-trained language models have been shown to store factual knowledge in their parameters, and achieve state-of-the-art results when fine-tuned on downstream NLP tasks. However, their ability to access and precisely manipulate knowledge is still limited, and hence on knowledge-intensive tasks, their performance lags behind task-specific architectures. Additionally, providing provenance for their decisions and updating their world knowledge remain open research problems.",
-          "content_hash": "<hash>",
-          "key_fact": "Parametric knowledge is hard to access precisely, and provenance and updates remain open problems.",
-          "provenance_state": "UNCHECKED",
-          "attested_against": null,
-          "attestation_run_at": null
-        },
-        {
-          "id": "<uuid>",
-          "source_id": "<uuid>",
-          "sequence": 4,
-          "task_id": "2",
           "snippet": "Retrieval-Augmented Generation (RAG) has emerged as a promising solution by incorporating knowledge from external databases. This enhances the accuracy and credibility of the generation, particularly for knowledge-intensive tasks, and allows for continuous knowledge updates and integration of domain-specific information.",
           "content_hash": "<hash>",
           "key_fact": "External-database knowledge improves accuracy and credibility and allows continuous updates.",
@@ -365,7 +383,7 @@
             },
             "render_fidelity": "EXACT"
           },
-          "evidence_watermark": 4,
+          "evidence_watermark": 2,
           "created_at": "<timestamp>"
         }
       ],
@@ -521,76 +539,6 @@
           "evidence_id": "<uuid>",
           "stance": "SUPPORTS",
           "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
         }
       ],
       "contradictions": [],
@@ -633,6 +581,7 @@
         "corpus_mode": false,
         "demo": true,
         "skip_plan_gate": false,
+        "required_domains": null,
         "model_routing": {
           "planner": "google:gemini-2.5-flash",
           "executor": "google:gemini-2.5-flash",
@@ -640,9 +589,9 @@
           "synthesizer": "google:gemini-2.5-flash",
           "chat": "google:gemini-2.5-flash"
         },
-        "cost_usd": 0.000315,
-        "tokens_input": 1400,
-        "tokens_output": 700,
+        "cost_usd": 0.00027,
+        "tokens_input": 1200,
+        "tokens_output": 600,
         "elapsed_seconds": null,
         "citation_resolution_rate": null,
         "error_message": null,
@@ -659,6 +608,16 @@
               "id": "<int-id>",
               "query": "what retrieval-augmented generation is",
               "rationale": "define the mechanism before comparing it",
+              "domain": null,
+              "module": "",
+              "geography": "",
+              "population": "",
+              "time_period": "",
+              "evidence_type": "",
+              "preferred_source_types": [],
+              "freshness": "",
+              "minimum_source_quality": "medium",
+              "search_queries": [],
               "status": "pending",
               "subtopics": [],
               "include": true,
@@ -668,6 +627,16 @@
               "id": "<int-id>",
               "query": "when retrieval beats fine-tuning",
               "rationale": "the comparison the question actually asks for",
+              "domain": null,
+              "module": "",
+              "geography": "",
+              "population": "",
+              "time_period": "",
+              "evidence_type": "",
+              "preferred_source_types": [],
+              "freshness": "",
+              "minimum_source_quality": "medium",
+              "search_queries": [],
               "status": "pending",
               "subtopics": [],
               "include": true,
@@ -717,30 +686,6 @@
           "source_id": "<uuid>",
           "sequence": 2,
           "task_id": "1",
-          "snippet": "Retrieval-Augmented Generation (RAG) has emerged as a promising solution by incorporating knowledge from external databases. This enhances the accuracy and credibility of the generation, particularly for knowledge-intensive tasks, and allows for continuous knowledge updates and integration of domain-specific information.",
-          "content_hash": "<hash>",
-          "key_fact": "External-database knowledge improves accuracy and credibility and allows continuous updates.",
-          "provenance_state": "UNCHECKED",
-          "attested_against": null,
-          "attestation_run_at": null
-        },
-        {
-          "id": "<uuid>",
-          "source_id": "<uuid>",
-          "sequence": 3,
-          "task_id": "2",
-          "snippet": "Large pre-trained language models have been shown to store factual knowledge in their parameters, and achieve state-of-the-art results when fine-tuned on downstream NLP tasks. However, their ability to access and precisely manipulate knowledge is still limited, and hence on knowledge-intensive tasks, their performance lags behind task-specific architectures. Additionally, providing provenance for their decisions and updating their world knowledge remain open research problems.",
-          "content_hash": "<hash>",
-          "key_fact": "Parametric knowledge is hard to access precisely, and provenance and updates remain open problems.",
-          "provenance_state": "UNCHECKED",
-          "attested_against": null,
-          "attestation_run_at": null
-        },
-        {
-          "id": "<uuid>",
-          "source_id": "<uuid>",
-          "sequence": 4,
-          "task_id": "2",
           "snippet": "Retrieval-Augmented Generation (RAG) has emerged as a promising solution by incorporating knowledge from external databases. This enhances the accuracy and credibility of the generation, particularly for knowledge-intensive tasks, and allows for continuous knowledge updates and integration of domain-specific information.",
           "content_hash": "<hash>",
           "key_fact": "External-database knowledge improves accuracy and credibility and allows continuous updates.",
@@ -866,7 +811,7 @@
             },
             "render_fidelity": "EXACT"
           },
-          "evidence_watermark": 4,
+          "evidence_watermark": 2,
           "created_at": "<timestamp>"
         },
         {
@@ -985,7 +930,7 @@
             },
             "render_fidelity": "EXACT"
           },
-          "evidence_watermark": 4,
+          "evidence_watermark": 2,
           "created_at": "<timestamp>"
         }
       ],
@@ -1152,146 +1097,6 @@
         }
       ],
       "claim_evidence_links": [
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
         {
           "id": "<uuid>",
           "claim_id": "<uuid>",
@@ -1484,6 +1289,7 @@
         "corpus_mode": false,
         "demo": true,
         "skip_plan_gate": false,
+        "required_domains": null,
         "model_routing": {
           "planner": "google:gemini-2.5-flash",
           "executor": "google:gemini-2.5-flash",
@@ -1491,9 +1297,9 @@
           "synthesizer": "google:gemini-2.5-flash",
           "chat": "google:gemini-2.5-flash"
         },
-        "cost_usd": 0.000315,
-        "tokens_input": 1400,
-        "tokens_output": 700,
+        "cost_usd": 0.00027,
+        "tokens_input": 1200,
+        "tokens_output": 600,
         "elapsed_seconds": null,
         "citation_resolution_rate": 1.0,
         "error_message": null,
@@ -1510,6 +1316,16 @@
               "id": "<int-id>",
               "query": "what retrieval-augmented generation is",
               "rationale": "define the mechanism before comparing it",
+              "domain": null,
+              "module": "",
+              "geography": "",
+              "population": "",
+              "time_period": "",
+              "evidence_type": "",
+              "preferred_source_types": [],
+              "freshness": "",
+              "minimum_source_quality": "medium",
+              "search_queries": [],
               "status": "pending",
               "subtopics": [],
               "include": true,
@@ -1519,6 +1335,16 @@
               "id": "<int-id>",
               "query": "when retrieval beats fine-tuning",
               "rationale": "the comparison the question actually asks for",
+              "domain": null,
+              "module": "",
+              "geography": "",
+              "population": "",
+              "time_period": "",
+              "evidence_type": "",
+              "preferred_source_types": [],
+              "freshness": "",
+              "minimum_source_quality": "medium",
+              "search_queries": [],
               "status": "pending",
               "subtopics": [],
               "include": true,
@@ -1568,30 +1394,6 @@
           "source_id": "<uuid>",
           "sequence": 2,
           "task_id": "1",
-          "snippet": "Retrieval-Augmented Generation (RAG) has emerged as a promising solution by incorporating knowledge from external databases. This enhances the accuracy and credibility of the generation, particularly for knowledge-intensive tasks, and allows for continuous knowledge updates and integration of domain-specific information.",
-          "content_hash": "<hash>",
-          "key_fact": "External-database knowledge improves accuracy and credibility and allows continuous updates.",
-          "provenance_state": "UNCHECKED",
-          "attested_against": null,
-          "attestation_run_at": null
-        },
-        {
-          "id": "<uuid>",
-          "source_id": "<uuid>",
-          "sequence": 3,
-          "task_id": "2",
-          "snippet": "Large pre-trained language models have been shown to store factual knowledge in their parameters, and achieve state-of-the-art results when fine-tuned on downstream NLP tasks. However, their ability to access and precisely manipulate knowledge is still limited, and hence on knowledge-intensive tasks, their performance lags behind task-specific architectures. Additionally, providing provenance for their decisions and updating their world knowledge remain open research problems.",
-          "content_hash": "<hash>",
-          "key_fact": "Parametric knowledge is hard to access precisely, and provenance and updates remain open problems.",
-          "provenance_state": "UNCHECKED",
-          "attested_against": null,
-          "attestation_run_at": null
-        },
-        {
-          "id": "<uuid>",
-          "source_id": "<uuid>",
-          "sequence": 4,
-          "task_id": "2",
           "snippet": "Retrieval-Augmented Generation (RAG) has emerged as a promising solution by incorporating knowledge from external databases. This enhances the accuracy and credibility of the generation, particularly for knowledge-intensive tasks, and allows for continuous knowledge updates and integration of domain-specific information.",
           "content_hash": "<hash>",
           "key_fact": "External-database knowledge improves accuracy and credibility and allows continuous updates.",
@@ -1717,7 +1519,7 @@
             },
             "render_fidelity": "EXACT"
           },
-          "evidence_watermark": 4,
+          "evidence_watermark": 2,
           "created_at": "<timestamp>"
         },
         {
@@ -1836,7 +1638,7 @@
             },
             "render_fidelity": "EXACT"
           },
-          "evidence_watermark": 4,
+          "evidence_watermark": 2,
           "created_at": "<timestamp>"
         }
       ],
@@ -2003,146 +1805,6 @@
         }
       ],
       "claim_evidence_links": [
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
-        {
-          "id": "<uuid>",
-          "claim_id": "<uuid>",
-          "evidence_id": "<uuid>",
-          "stance": "SUPPORTS",
-          "origin": "CITATION_MARKER"
-        },
         {
           "id": "<uuid>",
           "claim_id": "<uuid>",
@@ -2420,7 +2082,7 @@
         }
       ],
       "contradictions": [],
-      "cost_usd": 0.000315,
+      "cost_usd": 0.00027,
       "created_at": "<timestamp>",
       "demo": true,
       "elapsed_seconds": null,
@@ -2438,22 +2100,9 @@
           "snippet": "Retrieval-Augmented Generation (RAG) has emerged as a promising solution by incorporating knowledge from external databases. This enhances the accuracy and credibility of the generation, particularly for knowledge-intensive tasks, and allows for continuous knowledge updates and integration of domain-specific information.",
           "source_title": "Retrieval-Augmented Generation for Large Language Models: A Survey",
           "source_url": "https://arxiv.org/abs/2312.10997"
-        },
-        {
-          "content_hash": "<hash>",
-          "key_fact": "Parametric knowledge is hard to access precisely, and provenance and updates remain open problems.",
-          "snippet": "Large pre-trained language models have been shown to store factual knowledge in their parameters, and achieve state-of-the-art results when fine-tuned on downstream NLP tasks. However, their ability to access and precisely manipulate knowledge is still limited, and hence on knowledge-intensive tasks, their performance lags behind task-specific architectures. Additionally, providing provenance for their decisions and updating their world knowledge remain open research problems.",
-          "source_title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
-          "source_url": "https://arxiv.org/abs/2005.11401"
-        },
-        {
-          "content_hash": "<hash>",
-          "key_fact": "External-database knowledge improves accuracy and credibility and allows continuous updates.",
-          "snippet": "Retrieval-Augmented Generation (RAG) has emerged as a promising solution by incorporating knowledge from external databases. This enhances the accuracy and credibility of the generation, particularly for knowledge-intensive tasks, and allows for continuous knowledge updates and integration of domain-specific information.",
-          "source_title": "Retrieval-Augmented Generation for Large Language Models: A Survey",
-          "source_url": "https://arxiv.org/abs/2312.10997"
         }
       ],
+      "findings": null,
       "models": {
         "chat": "google:gemini-2.5-flash",
         "critic": "google:gemini-2.5-flash",
@@ -2486,8 +2135,8 @@
           "url": "https://arxiv.org/abs/2312.10997"
         }
       ],
-      "tokens_input": 1400,
-      "tokens_output": 700,
+      "tokens_input": 1200,
+      "tokens_output": 600,
       "trace": {
         "empty": false
       },

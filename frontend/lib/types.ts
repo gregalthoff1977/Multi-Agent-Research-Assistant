@@ -554,9 +554,57 @@ export interface RunRevision {
   version: number;
   report_markdown: string;
   report_hash: string;
+  /** Present for nugget-based revisions. Older reports have no package. */
+  research_package?: ResearchPackage;
   /** The last evidence sequence visible at synthesis. A threshold, not a count. */
   evidence_watermark: number;
   created_at: string;
+}
+
+export interface ResearchNugget {
+  id: string;
+  domain: string;
+  module: string;
+  task_id: string;
+  question: string;
+  answer: string | null;
+  evidence_type: string | null;
+  confidence: "HIGH" | "MEDIUM" | "LOW" | null;
+  confidence_reason: string | null;
+  scope: { geography: string; population: string; time_period: string };
+  evidence: {
+    evidence_id: string;
+    quote: string;
+    source: string;
+    url: string;
+    source_type: string;
+    published: string | null;
+    attestation: string;
+    suitability: string;
+    suitability_reason: string;
+  }[];
+  caveats: string[];
+  status: "ANSWERED" | "PARTIALLY_ANSWERED" | "CONFLICTING" | "UNANSWERED";
+}
+
+export interface ResearchPackage {
+  version: number;
+  research_question: string;
+  summary: {
+    questions_planned: number;
+    nugget_count: number;
+    evidence_count: number;
+    answered: number;
+    partially_answered: number;
+    conflicting: number;
+    unanswered: number;
+    high_confidence: number;
+    medium_confidence: number;
+    low_confidence: number;
+  };
+  domains: Record<string, ResearchNugget[]>;
+  contradictions: unknown[];
+  research_gaps: string[];
 }
 
 export interface RunClaim {
@@ -670,4 +718,3 @@ export interface RunSummary {
   archived_at?: string | null;
   created_at: string;
 }
-
