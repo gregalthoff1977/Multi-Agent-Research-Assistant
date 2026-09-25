@@ -477,6 +477,7 @@ async def record_revision(
     report_markdown: str,
     evidence_index: EvidenceWrite | None = None,
     findings: list[dict] | None = None,
+    derive_claims: bool = True,
 ) -> RevisionWrite:
     """Append the next immutable revision, with its claims and their evidence links.
 
@@ -536,7 +537,9 @@ async def record_revision(
         by_index = await _evidence_by_citation_index(db, run.id)
 
     claim_count = link_count = 0
-    for position, text in enumerate(claim_rules.claim_lines(report_markdown)):
+    for position, text in enumerate(
+        claim_rules.claim_lines(report_markdown) if derive_claims else ()
+    ):
         claim = Claim(
             id=uuid.uuid4(),
             revision_id=revision.id,

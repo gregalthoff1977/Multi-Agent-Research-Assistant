@@ -66,6 +66,9 @@ class RunConfig:
     # no-network guard, and a missed one would send a demo run to a real provider. As a
     # separate flag the worst case is a demo showing test filler, never a surprise call.
     demo: bool = False
+    # New research runs terminate with evidence-backed nuggets. Legacy session
+    # reports retain their supported narrative workflow and checkpoint contract.
+    output_mode: Literal["report", "package"] = "report"
     models: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_MODELS))
     provider_keys: Mapping[str, str] = field(default_factory=dict)
 

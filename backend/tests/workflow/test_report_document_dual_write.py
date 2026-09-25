@@ -169,6 +169,29 @@ async def test_findings_are_snapshotted_per_revision_and_legacy_remains_null(run
     assert rows[1]["findings"] == [finding]
 
 
+async def test_nuggets_persist_as_immutable_revisions_and_json_is_retrievable(run):
+    from app.api.v1.runs import get_research_package, project_run
+    from research_engine.research_package import build_nuggets, package, render_markdown
+
+    db, row = run
+    question = {"id": 1, "domain": "company", "module": "Product", "query": "What is sold?"}
+    nuggets = build_nuggets([question], [])
+    markdown = render_markdown(package(row.question, nuggets))
+    first = await run_lifecycle.record_revision(
+        db, row, report_markdown=markdown, findings=nuggets, derive_claims=False
+    )
+    assert first.claim_count == 0
+    assert first.revision.findings[0]["id"] == nuggets[0]["id"]
+    await run_lifecycle.record_revision(db, row, report_markdown=REPORT)
+    await db.commit()
+    fetched = await get_research_package(row.id, 1, db, await db.get(User, row.owner_id))
+    assert fetched["domains"]["company"] == nuggets
+    assert fetched["summary"]["unanswered"] == 1
+    view = await project_run(db, row)
+    assert view["revisions"][0]["research_package"]["domains"]["company"] == nuggets
+    assert "research_package" not in view["revisions"][1]
+
+
 async def test_persisted_source_uses_the_url_that_numbered_findings_cite(run):
     db, row = run
     await run_lifecycle.record_evidence(

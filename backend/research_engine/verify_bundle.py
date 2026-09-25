@@ -178,6 +178,28 @@ def _check_findings(bundle: BundleManifest) -> CheckResult:
     }
     gaps = []
     for i, finding in enumerate(bundle.findings):
+        if "id" in finding and "evidence" in finding:
+            supports = finding["evidence"]
+            status = finding.get("status")
+            confidence = finding.get("confidence")
+            if status == "UNANSWERED":
+                if supports or finding.get("answer") is not None or confidence is not None:
+                    gaps.append(i)
+            elif (
+                not supports
+                or status not in {"ANSWERED", "PARTIALLY_ANSWERED", "CONFLICTING"}
+                or confidence not in {"HIGH", "MEDIUM", "LOW"}
+                or not finding.get("confidence_reason")
+                or [e.get("evidence_id") for e in supports] != finding.get("evidence_ids")
+                or any(known.get(e.get("evidence_id")) != e.get("url") for e in supports)
+                or any(
+                    hashlib.sha256(f"{e.get('url')}\0{e.get('quote')}".encode()).hexdigest()
+                    != e.get("evidence_id")
+                    for e in supports
+                )
+            ):
+                gaps.append(i)
+            continue
         ids = finding.get("evidence_ids") or []
         urls = finding.get("source_urls") or []
         if (

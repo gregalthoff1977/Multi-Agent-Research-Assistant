@@ -276,7 +276,11 @@ def _finding_statement(
 
 
 def build_findings(
-    evidence: list[dict], tasks: list[dict], contradictions: list[dict] | None = None
+    evidence: list[dict],
+    tasks: list[dict],
+    contradictions: list[dict] | None = None,
+    *,
+    allow_task_reuse: bool = False,
 ) -> list[dict]:
     """Assess exact claims, keeping weak evidence visible without promoting repetition.
 
@@ -292,7 +296,7 @@ def build_findings(
         if p.get(key)
     }
     groups: dict[tuple[str, str, str], list[tuple[str, dict, SourceAssessment]]] = defaultdict(list)
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, ...]] = set()
     for item in evidence:
         if not isinstance(item, dict):
             continue
@@ -305,9 +309,10 @@ def build_findings(
         if assessment.suitability == "unsuitable" and assessment.attestation == "UNCHECKED":
             continue
         identity = (url.lower().rstrip("/"), " ".join(snippet.lower().split()))
-        if identity in seen:
+        observation = (task_id, *identity) if allow_task_reuse else identity
+        if observation in seen:
             continue
-        seen.add(identity)
+        seen.add(observation)
         key_fact = " ".join((item.get("key_fact") or "").lower().split())
         # Only group model-authored key facts when the complete statement occurs in the
         # attested snippet; otherwise a paraphrase may conflate distinct assertions.

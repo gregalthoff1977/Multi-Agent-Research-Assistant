@@ -132,7 +132,23 @@ instead.
 
 ### 6. Finding assessments
 
-New native runs may carry `findings`, a list of objects with a quoted finding, Four Cs
+For new real server and desktop runs, `findings` stores the authoritative research
+nuggets at each immutable revision. Each object has a stable `id`, Four Cs `domain`
+and `module`, atomic `question` and evidence-limited `answer`, controlled
+`evidence_type`, `confidence` (`HIGH`/`MEDIUM`/`LOW`) with `confidence_reason`,
+task `scope`, `status` (`ANSWERED`/`PARTIALLY_ANSWERED`/`CONFLICTING`/`UNANSWERED`),
+`caveats`, and `evidence` with exact quotes, stable hashes, URL, classification,
+attestation and claim-dependent suitability. Unanswered nuggets have no supporting
+evidence, answer or confidence. The run's research-package JSON is available at
+`GET /api/v1/runs/{run_id}/research-package?revision_version=N`; the bundle's
+`report` is a deterministic Markdown view for older integrity/approval contracts.
+The offline verifier checks nugget-to-evidence lineage, including the absence of
+evidence on an unanswered nugget. No schema migration is needed: the versioned
+`Revision.findings` JSON column already exists.
+
+For legacy report sessions and older revisions, the earlier finding contract applies:
+
+Legacy native reports may carry `findings`, a list of objects with a quoted finding, Four Cs
 domain/module, evidence role, status (`established`, `qualified`, `emerging_signal`, or
 `research_gap`), confidence, caveats, source assessments, source URLs, and evidence IDs.
 V3.1 findings also include `scope` (the task's query, geography, population, time

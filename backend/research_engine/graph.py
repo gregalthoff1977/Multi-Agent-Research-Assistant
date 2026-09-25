@@ -32,7 +32,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field, model_validator
 
-from research_engine import claims, contradictions, findings, outlines, prompts
+from research_engine import claims, contradictions, findings, outlines, prompts, research_package
 from research_engine.events import emit
 from research_engine.llm_factory import (
     estimate_cost,
@@ -1951,6 +1951,8 @@ def _market_scope_block(assessed: list[dict], seen: dict[str, int]) -> str:
 
 
 async def synthesizer_node(state: AgentState) -> dict:
+    if get_run_config().output_mode == "package" and get_run_config().llm_mode == "real":
+        return await research_package_node(state)
     sid = state["session_id"]
     await emit(
         sid,
@@ -2216,6 +2218,43 @@ async def synthesizer_node(state: AgentState) -> dict:
     }
 
 
+async def research_package_node(state: AgentState) -> dict:
+    """Conclude research from attested task evidence without generating report prose."""
+    started = time.monotonic()
+    nuggets = research_package.build_nuggets(
+        state.get("tasks") or [],
+        _citable_evidence(state.get("evidence") or []),
+        state.get("contradictions") or [],
+    )
+    result = research_package.package(
+        state["original_query"], nuggets, state.get("contradictions") or []
+    )
+    source_evidence = [
+        {
+            "source_url": e["url"],
+            "source_title": e["source"],
+            "snippet": e["quote"],
+        }
+        for n in nuggets
+        for e in n["evidence"]
+    ]
+    sources, _ = _number_sources(source_evidence)
+    logger.info(
+        "research_package_summary",
+        **result["summary"],
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+        model_calls=0,
+    )
+    return {
+        "findings": nuggets,
+        "research_package": result,
+        "draft_report": research_package.render_markdown(result),
+        "sources": sources,
+        "judgment_applied": True,
+        "human_feedback": None,
+    }
+
+
 def plan_gate_node(state: AgentState) -> dict:
     """Pause after the planner for the user to edit subtopics and the outline before
     any search spends money (docs/07 §2, Phase 4). Mirrors `hitl_gate_node` exactly:
@@ -2401,7 +2440,9 @@ def route_after_critic(state: AgentState) -> str:
     # difference between "we could not answer this" and a fluent report sourced from the
     # synthesizer's training data — the latter is what the citation-repair pass turns into
     # an artifact that *looks* verified while resolving to nothing.
-    if not _citable_evidence(state.get("evidence", [])):
+    if not _citable_evidence(state.get("evidence", [])) and not (
+        get_run_config().output_mode == "package" and get_run_config().llm_mode == "real"
+    ):
         return "failer"
     return "contradiction_detector"
 

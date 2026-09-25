@@ -177,6 +177,32 @@ instead of `0.6`, and a benign scale difference must not discard an otherwise-va
 Every node emits an event on entry and exit, and updates the running token and cost totals
 from the model response's own usage metadata.
 
+### Structured research packages for new runs
+
+Real server and desktop **runs** select `RunConfig.output_mode="package"`. They retain
+the Four Cs planner, plan review, executor, critic, attestation and contradiction
+detector. At the synthesizer boundary, they build nuggets directly from attested
+task evidence and existing source assessments. This branch performs **zero** narrative
+synthesis, citation repair, prose claim extraction, finding realignment or semantic
+verification calls. Existing legacy **sessions** and scripted demo journeys continue
+to use the report path; the older report guards remain active there.
+
+Every planned task produces at least one nugget, including `UNANSWERED` with no
+invented evidence. Separate claims from one task remain separate; exact shared claims
+may retain several supporting quotations. Unreconciled rival estimates can share a
+`CONFLICTING` nugget containing both source quotations. An answered nugget has a
+stable task-scoped ID, permissible answer, exact quotation hashes and URLs, claim
+dependent suitability, evidence role, `HIGH`/`MEDIUM`/`LOW` confidence, a reason,
+task scope and caveats. The package counts and Four Cs navigation are derived from
+those nuggets, never model generated.
+
+The nuggets are stored as immutable `Revision.findings` JSON. `GET
+/api/v1/runs/{run_id}/research-package?revision_version=N` serves the versioned
+structured result; run detail also includes it beside each new revision. A Markdown
+rendering is mechanically derived for the existing approval hash, export and indexing
+contracts; it is not the interchange artifact. There is no new database migration.
+The existing review and cost tracking continue to operate on the same graph nodes.
+
 ## The executor tool loop
 
 A bounded loop, at most **8 tool-call rounds per task**:
@@ -255,7 +281,7 @@ Versioned constants in `research_engine/prompts.py`, never inline in node code.
   and a gap names the unanswered task. A numerical population assertion inside a
   Culture task is still a measured claim and must meet that standard; task labels do
   not turn a statistic into an anecdotal cultural occurrence.
-- **Finding alignment (V3.1)** — in real runs, citation verification is followed by a
+- **Finding alignment (V3.1 legacy report path)** — in real legacy sessions, citation verification is followed by a
   second, fail-closed check that binds each cited sentence to its specific eligible
   finding quotation. A URL can contain several claims with different assessments:
   the URL alone never transfers confidence between them. If no finding quotation
@@ -278,7 +304,7 @@ Versioned constants in `research_engine/prompts.py`, never inline in node code.
   category-size estimates carry structured scope comparisons and a brief report note
   when their definitions are not reconciled. This does not certify that a publisher's
   market methodology or category definitions match the research task.
-- **Synthesizer** — produces a research-only Four Cs deliverable from assessed findings;
+- **Synthesizer (legacy report path)** — produces a research-only Four Cs deliverable from assessed findings;
   it preserves gaps/counter-signals and does
   **not** make positioning or strategic recommendations. Every factual claim carries `[n]`
   markers mapping to evidence indices. An outline approved at the design gate *replaces* the

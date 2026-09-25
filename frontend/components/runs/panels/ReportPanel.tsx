@@ -9,7 +9,7 @@ import { Report } from "@/lib/citations";
 import { downloadExport } from "@/lib/download";
 import { formatCost, formatDuration, formatNumber } from "@/lib/format";
 import { citedSources, markerResolution } from "@/lib/runReport";
-import type { RunGraph } from "@/lib/types";
+import type { ResearchPackage, RunGraph } from "@/lib/types";
 
 import { Hash, runTotals } from "../primitives";
 
@@ -41,6 +41,16 @@ export function ReportPanel({ graph }: { graph: RunGraph }) {
       <EmptyState
         title="No report yet"
         description="This run has not produced a revision. Anything gathered so far is on the Evidence tab."
+      />
+    );
+  }
+
+  if (latest.research_package) {
+    return (
+      <ResearchFindings
+        researchPackage={latest.research_package}
+        runId={graph.run.id}
+        version={latest.version}
       />
     );
   }
@@ -170,6 +180,95 @@ export function ReportPanel({ graph }: { graph: RunGraph }) {
           </dd>
         </div>
       </dl>
+    </div>
+  );
+}
+
+function ResearchFindings({
+  researchPackage,
+  runId,
+  version,
+}: {
+  researchPackage: ResearchPackage;
+  runId: string;
+  version: number;
+}) {
+  const s = researchPackage.summary;
+  return (
+    <div className="space-y-6">
+      <div className="card space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Research Findings</h2>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() =>
+              downloadExport(
+                "/runs/" + runId + "/research-package?revision_version=" + version,
+                "research-" + runId.slice(0, 8) + ".json",
+              ).catch(() => toast.error("Couldn't export the research package."))
+            }
+          >
+            Download JSON
+          </button>
+        </div>
+        <p className="text-sm text-text-secondary">{researchPackage.research_question}</p>
+        <p className="text-xs text-text-secondary">
+          {s.questions_planned} questions · {s.nugget_count} nuggets · {s.evidence_count} pieces
+          of evidence · {s.answered} answered · {s.partially_answered} partial · {s.conflicting}
+          {" "}conflicting · {s.unanswered} unanswered
+        </p>
+        <p className="text-xs text-text-secondary">
+          Confidence: {s.high_confidence} high · {s.medium_confidence} medium · {s.low_confidence} low
+        </p>
+      </div>
+      {["consumer", "company", "category", "culture", ...Object.keys(researchPackage.domains).filter(
+        (domain) => !["consumer", "company", "category", "culture"].includes(domain),
+      )].map((domain) => {
+        const nuggets = researchPackage.domains[domain] ?? [];
+        if (!nuggets.length) return null;
+        return (
+          <section key={domain} className="space-y-3" aria-label={domain + " findings"}>
+            <h2 className="text-lg font-semibold capitalize">{domain}</h2>
+            {nuggets.map((n) => (
+              <article key={n.id} className="card space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-semibold">{n.module}</h3>
+                  <span className="text-xs text-text-secondary">{n.status} · {n.confidence ?? "N/A"}</span>
+                </div>
+                <p className="text-sm font-medium">{n.question}</p>
+                <p className="text-sm">{n.answer ?? "Unanswered."}</p>
+                {n.confidence_reason && <p className="text-xs text-text-secondary">Why: {n.confidence_reason}</p>}
+                {n.caveats.length > 0 && (
+                  <p className="text-xs text-text-secondary">Caveats: {n.caveats.join("; ")}</p>
+                )}
+                {n.evidence.length > 0 && (
+                  <details className="text-sm">
+                    <summary className="cursor-pointer">
+                      {n.evidence.length} supporting source{n.evidence.length === 1 ? "" : "s"}
+                    </summary>
+                    <ul className="mt-2 space-y-3">
+                      {n.evidence.map((e) => (
+                        <li key={e.evidence_id} className="border-l-2 border-border pl-3">
+                          <blockquote>{e.quote}</blockquote>
+                          <a className="break-all text-link underline" href={e.url} target="_blank" rel="noopener noreferrer">
+                            {e.source}
+                          </a>
+                          <p className="text-xs text-text-secondary">
+                            {e.source_type} · {e.suitability} suitability · {e.attestation}
+                            {e.published ? " · Published " + e.published : ""}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                <p className="font-mono text-[length:var(--text-micro)] text-text-muted">{n.id}</p>
+              </article>
+            ))}
+          </section>
+        );
+      })}
     </div>
   );
 }

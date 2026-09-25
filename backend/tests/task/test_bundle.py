@@ -135,6 +135,41 @@ def test_finding_links_are_verified_in_the_same_bundle_on_both_hosts():
     assert not check.passed
 
 
+def test_research_nuggets_verify_lineage_and_allow_explicit_gaps():
+    from research_engine.research_package import build_nuggets, render_markdown
+    from research_engine.research_package import package as make_package
+
+    task = {
+        "id": 1,
+        "domain": "company",
+        "module": "Product",
+        "query": "What does Chameleon sell?",
+        "evidence_type": "product fact",
+        "population": "Chameleon Cold-Brew",
+    }
+    quote = {
+        "task_id": 1,
+        "source_url": "https://chameleoncoldbrew.com/products",
+        "snippet": "Chameleon Cold-Brew sells concentrate.",
+        "attestation_grade": "FETCHED_BODY",
+    }
+    nuggets = build_nuggets([task, {**task, "id": 2, "query": "What is sales volume?"}], [quote])
+    report = render_markdown(make_package("Chameleon?", nuggets))
+    bundle = _bundle(
+        query="Chameleon?",
+        report=report,
+        evidence=[quote],
+        sources=[{"index": 1, "url": quote["source_url"], "title": "Product"}],
+        findings=nuggets,
+        approval_chain=[{**_APPROVAL[0], "draft_hash": content_hash(report)}],
+    )
+    assert verify(BundleManifest.model_validate_json(serialize(bundle))).passed
+    bundle.findings[0]["evidence"][0]["quote"] = "Altered quote"
+    bundle.bundle_hash = compute_bundle_hash(bundle)
+    check = next(c for c in verify(bundle).checks if c.name == "finding_evidence_linkage")
+    assert not check.passed
+
+
 # ── 2. Tamper detection — snippet ─────────────────────────────────────────────────
 
 
