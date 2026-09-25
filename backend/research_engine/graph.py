@@ -142,7 +142,21 @@ def _looks_like_quota(msg: str) -> bool:
     )
 
 
-async def _structured(role: str, messages: list, schema):
+async def _logged_model_call(stage: str, invocation):
+    """Count actual provider attempts by stage using the run's logging context."""
+    started = time.monotonic()
+    try:
+        return await invocation
+    finally:
+        if get_run_config().output_mode == "package" and get_run_config().llm_mode == "real":
+            logger.info(
+                "research_model_call",
+                stage=stage,
+                elapsed_ms=round((time.monotonic() - started) * 1000),
+            )
+
+
+async def _structured(role: str, messages: list, schema, *, stage: str | None = None):
     """Invoke a role's model and return (parsed_model_or_None, cost, in_tok, out_tok).
 
     Real models use with_structured_output(include_raw=True) so usage_metadata is
@@ -151,7 +165,7 @@ async def _structured(role: str, messages: list, schema):
     _last_api_error.set(None)
     model = get_llm(role)
     if get_run_config().llm_mode == "fake":
-        resp = await model.ainvoke(messages)
+        resp = await _logged_model_call(stage or role, model.ainvoke(messages))
         cost = estimate_cost(resp, role)
         i, o = token_counts(resp)
         try:
@@ -162,7 +176,7 @@ async def _structured(role: str, messages: list, schema):
 
     structured = model.with_structured_output(schema, include_raw=True)
     try:
-        result = await structured.ainvoke(messages)
+        result = await _logged_model_call(stage or role, structured.ainvoke(messages))
     except Exception as e:  # noqa: BLE001
         # with_structured_output can RAISE (not just set parsing_error) when a model
         # returns output the schema rejects — e.g. a local 7B emitting an out-of-range
@@ -762,7 +776,7 @@ async def _forced_submit(
                 model = get_llm("executor").bind_tools(
                     [submit_evidence], tool_choice="submit_evidence"
                 )
-                resp = await model.ainvoke(messages)
+                resp = await _logged_model_call("executor", model.ainvoke(messages))
                 await charge(estimate_cost(resp, "executor"), *token_counts(resp))
                 calls = [
                     c
@@ -885,7 +899,7 @@ async def _research_one(state: AgentState, task: dict, guard: _BudgetGuard) -> d
             # Enough sources are in hand; the forced pass below turns them into evidence.
             logger.info("executor_read_limit", session_id=sid, task_id=task["id"])
             break
-        resp = await model.ainvoke(messages)
+        resp = await _logged_model_call("executor", model.ainvoke(messages))
         round_cost = estimate_cost(resp, "executor")
         cost += round_cost
         await guard.add(round_cost)
@@ -1646,7 +1660,9 @@ async def contradiction_detector_node(state: AgentState) -> dict:
             f"{contradictions.build_detector_input(by_source)}"
         ),
     ]
-    parsed, cost, i, o = await _structured("critic", messages, ContradictionReport)
+    parsed, cost, i, o = await _structured(
+        "critic", messages, ContradictionReport, stage="contradiction_detector"
+    )
     if parsed is None:
         reason = _last_api_error.get() or "unparseable response"
         await emit(
@@ -2456,14 +2472,33 @@ def route_after_gate(state: AgentState) -> str:
 # ── Build ──────────────────────────────────────────────────────────────────────────
 
 
+def _timed_node(stage: str, node):
+    async def run(state: AgentState) -> dict:
+        started = time.monotonic()
+        try:
+            return await node(state)
+        finally:
+            if get_run_config().output_mode == "package" and get_run_config().llm_mode == "real":
+                logger.info(
+                    "research_stage_summary",
+                    session_id=state.get("session_id"),
+                    stage=stage,
+                    elapsed_ms=round((time.monotonic() - started) * 1000),
+                )
+
+    return run
+
+
 def build_graph(checkpointer):
     g = StateGraph(AgentState)
-    g.add_node("planner", planner_node)
+    g.add_node("planner", _timed_node("planner", planner_node))
     g.add_node("plan_gate", plan_gate_node)
-    g.add_node("executor", executor_node)
-    g.add_node("critic", critic_node)
-    g.add_node("contradiction_detector", contradiction_detector_node)
-    g.add_node("synthesizer", synthesizer_node)
+    g.add_node("executor", _timed_node("executor", executor_node))
+    g.add_node("critic", _timed_node("critic", critic_node))
+    g.add_node(
+        "contradiction_detector", _timed_node("contradiction_detector", contradiction_detector_node)
+    )
+    g.add_node("synthesizer", _timed_node("package_or_legacy_synthesis", synthesizer_node))
     g.add_node("hitl_gate", hitl_gate_node)
     g.add_node("finalizer", finalizer_node)
     g.add_node("failer", failer_node)

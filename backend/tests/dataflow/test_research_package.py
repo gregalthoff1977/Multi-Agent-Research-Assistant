@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from research_engine.research_package import build_nuggets, package, render_markdown
 
 
@@ -180,3 +182,33 @@ async def test_package_path_never_calls_narrative_synthesizer(monkeypatch):
     assert result["research_package"]["summary"]["answered"] == 1
     assert result["judgment_applied"] is True
     assert result["findings"][0]["evidence"][0]["attestation"] == "FETCHED_BODY"
+
+
+async def test_model_attempt_and_stage_duration_are_logged_even_on_failure(monkeypatch):
+    from research_engine import graph
+    from research_engine.runconfig import RunConfig, reset_run_config, set_run_config
+
+    records = []
+
+    class Capture:
+        def info(self, event, **fields):
+            records.append((event, fields))
+
+    async def failing(state):
+        async def provider():
+            raise RuntimeError("provider unavailable")
+
+        await graph._logged_model_call("executor", provider())
+
+    monkeypatch.setattr(graph, "logger", Capture())
+    token = set_run_config(RunConfig(output_mode="package", llm_mode="real"))
+    try:
+        with pytest.raises(RuntimeError, match="provider unavailable"):
+            await graph._timed_node("executor", failing)({"session_id": "run-1"})
+    finally:
+        reset_run_config(token)
+    assert [(event, fields["stage"]) for event, fields in records] == [
+        ("research_model_call", "executor"),
+        ("research_stage_summary", "executor"),
+    ]
+    assert all(fields["elapsed_ms"] >= 0 for _, fields in records)

@@ -202,6 +202,11 @@ structured result; run detail also includes it beside each new revision. A Markd
 rendering is mechanically derived for the existing approval hash, export and indexing
 contracts; it is not the interchange artifact. There is no new database migration.
 The existing review and cost tracking continue to operate on the same graph nodes.
+Run-scoped `research_model_call` logs record each actual provider attempt by stage,
+including failed attempts, and `research_stage_summary` logs record elapsed time for
+planner, executor, critic, contradiction detection and package assembly. Counting
+the former and summing the latter across retries gives stage totals. The package
+summary also logs planned questions, answer statuses, evidence and confidence counts.
 
 ## The executor tool loop
 
