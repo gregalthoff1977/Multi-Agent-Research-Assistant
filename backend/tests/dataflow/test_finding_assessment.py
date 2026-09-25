@@ -1,5 +1,7 @@
 """Claim-dependent evidence judgment, with no network or model in the decision."""
 
+import re
+
 from langchain_core.messages import AIMessage
 
 from research_engine.findings import assess_source, build_findings, evidence_id
@@ -284,7 +286,7 @@ async def test_real_synthesis_receives_assessed_findings_and_filters_unattested(
                 usage_metadata={"input_tokens": 10, "output_tokens": 10, "total_tokens": 20},
             )
 
-    async def verified(sid, draft, sources):
+    async def verified(sid, draft, sources, verified_single_quotes=None):
         return draft, 0.0, 0, 0
 
     async def judged(pairs):
@@ -459,3 +461,199 @@ def test_real_finalizer_refuses_a_draft_without_judgment():
         reset_run_config(token)
     assert rejected["final_report"] is None and rejected["error"]
     assert accepted["final_report"] == "Assessed fact [1]."
+
+
+async def test_one_url_with_many_findings_only_checks_relevant_quote(monkeypatch):
+    from research_engine import graph
+
+    url = "https://chameleoncoldbrew.com/products"
+    sources = [
+        {**item(url, f"Chameleon sells concentrate flavor {n}."), "task_id": n}
+        for n in range(1, 11)
+    ]
+    tasks = [{**task("company", "product fact"), "id": n} for n in range(1, 11)]
+    assessed = build_findings(sources, tasks)
+    seen_pairs = []
+
+    async def judged(pairs):
+        seen_pairs.extend(pairs)
+        return [True] * len(pairs), 0.0, 0, 0
+
+    monkeypatch.setattr(graph, "_verifier_verdicts", judged)
+    result, *_ = await _apply_finding_confidence(
+        "Chameleon sells concentrate flavor 7 [1].", assessed, {url: 1}
+    )
+    assert result == "Chameleon sells concentrate flavor 7 [1]."
+    assert len(seen_pairs) == 1
+    assert seen_pairs[0][1] == sources[6]["snippet"]
+
+
+async def test_verified_single_quote_and_evidence_id_reuse_prior_ruling(monkeypatch):
+    from research_engine import graph
+
+    source = item("https://chameleoncoldbrew.com/products", "Chameleon sells concentrate.")
+    assessed = build_findings([source], [task("company", "product fact")])
+    assert assessed[0]["evidence_ids"] == [evidence_id(source["source_url"], source["snippet"])]
+    calls = 0
+
+    async def judged(pairs):
+        nonlocal calls
+        calls += 1
+        return [True] * len(pairs), 0.0, 0, 0
+
+    monkeypatch.setattr(graph, "_verifier_verdicts", judged)
+    draft = "Chameleon sells concentrate [1]."
+    validated = {}
+    verified, *_ = await graph._verify_citation_fidelity(
+        "s",
+        draft,
+        [{"index": 1, "url": source["source_url"], "snippets": [source["snippet"]]}],
+        validated,
+    )
+    result, *_ = await _apply_finding_confidence(
+        verified, assessed, {source["source_url"]: 1}, validated
+    )
+    assert validated == {draft: source["snippet"]}
+    assert result == draft
+    assert calls == 1  # citation verifier did the semantic work once
+
+
+async def test_duplicate_claim_quote_pair_is_verified_only_once(monkeypatch):
+    from research_engine import graph
+
+    source = item("https://chameleoncoldbrew.com/products", "Chameleon sells concentrate.")
+    assessed = build_findings([source], [task("company", "product fact")])
+    seen = []
+
+    async def judged(pairs):
+        seen.extend(pairs)
+        return [True] * len(pairs), 0.0, 0, 0
+
+    monkeypatch.setattr(graph, "_verifier_verdicts", judged)
+    claim = "Chameleon sells concentrate [1]."
+    result, *_ = await _apply_finding_confidence(
+        claim + "\n" + claim, assessed, {source["source_url"]: 1}
+    )
+    assert result == claim + "\n" + claim
+    assert seen == [(claim, source["snippet"])]
+
+
+async def test_same_attested_quote_in_multiple_findings_is_one_semantic_pair(monkeypatch):
+    from research_engine import graph
+
+    source = item("https://chameleoncoldbrew.com/products", "Chameleon sells concentrate.")
+    assessed = build_findings([source], [task("company", "product fact")])
+    # Legacy finding snapshots can repeat a quotation with a different judgment.
+    assessed.append({**assessed[0], "status": "qualified", "confidence": "low"})
+    assert len(assessed) == 2
+    pairs_checked = []
+
+    async def judged(pairs):
+        pairs_checked.extend(pairs)
+        return [True] * len(pairs), 0.0, 0, 0
+
+    monkeypatch.setattr(graph, "_verifier_verdicts", judged)
+    report, *_ = await _apply_finding_confidence(
+        "Chameleon sells concentrate [1].", assessed, {source["source_url"]: 1}
+    )
+    assert pairs_checked == [("Chameleon sells concentrate [1].", source["snippet"])]
+    assert "According to chameleoncoldbrew.com" in report
+
+
+async def test_citation_to_one_url_cannot_use_other_urls_quote(monkeypatch):
+    from research_engine import graph
+
+    first = item("https://example.org/concentrate", "Chameleon sells concentrate.")
+    second = item("https://example.org/rtd", "Chameleon sells RTD coffee.")
+    assessed = build_findings([first], [task("company", "product fact")])
+    finding = assessed[0]
+    finding["source_urls"].append(second["source_url"])
+    finding["source_quotes"].append(second["snippet"])
+    finding["evidence_ids"].append(evidence_id(second["source_url"], second["snippet"]))
+
+    async def judged(pairs):
+        raise AssertionError("Other URL's quotation cannot reach the model")
+
+    monkeypatch.setattr(graph, "_verifier_verdicts", judged)
+    result, *_ = await _apply_finding_confidence(
+        "Chameleon sells RTD coffee [1].",
+        assessed,
+        {first["source_url"]: 1, second["source_url"]: 2},
+    )
+    assert result == ""
+
+
+async def test_mismatched_scope_and_number_never_reach_semantic_verifier(monkeypatch):
+    from research_engine import graph
+
+    source = item("https://glassandnote.com/analysis", "Global iced coffee sales rose 8%.")
+    assessed = build_findings([source], [task("category", "market size")])
+
+    async def judged(pairs):
+        raise AssertionError("scope and number mismatches must not reach the model")
+
+    monkeypatch.setattr(graph, "_verifier_verdicts", judged)
+    draft = "U.S. cold brew sales rose 8% [1].\nGlobal iced coffee sales rose 18% [1]."
+    result, *_ = await _apply_finding_confidence(draft, assessed, {source["source_url"]: 1})
+    assert "rose" not in result
+
+
+async def test_alignment_work_scales_with_selected_quotes_not_url_cartesian_product(
+    monkeypatch,
+):
+    from research_engine import graph
+
+    # 30 claims, 6 URLs, 8 attested quotations per URL. The old algorithm sent
+    # 30 * 8 = 240 pairs / 60 sequential model calls. Exact numeric grounding
+    # leaves one quotation per cited claim and 8 model batches of four.
+    items = []
+    tasks = []
+    for url_number in range(6):
+        for quote_number in range(8):
+            task_id = url_number * 8 + quote_number + 1
+            url = f"https://university-{url_number}.edu/study"
+            items.append(
+                {
+                    **item(url, f"Survey estimates {100 + task_id}% for format {task_id}."),
+                    "task_id": task_id,
+                }
+            )
+            tasks.append({**task("category", "quantitative incidence"), "id": task_id})
+    assessed = build_findings(items, tasks)
+    draft = "\n".join(
+        f"Survey estimates {100 + n}% for format {n} [{(n - 1) // 8 + 1}]." for n in range(1, 31)
+    )
+
+    class Verifier:
+        calls = 0
+
+        async def ainvoke(self, messages):
+            self.calls += 1
+            count = len(re.findall(r"^Claim \d+:", messages[-1].content, re.M))
+            return AIMessage(content="\n".join(f"Claim {i}: YES" for i in range(1, count + 1)))
+
+    model = Verifier()
+    events = []
+
+    class Logged:
+        def info(self, event, **fields):
+            events.append((event, fields))
+
+        def warning(self, *args, **kwargs):
+            raise AssertionError("No model or alignment warning expected")
+
+    monkeypatch.setattr(graph, "get_llm", lambda role: model)
+    monkeypatch.setattr(graph, "logger", Logged())
+    result, *_ = await _apply_finding_confidence(
+        draft, assessed, {f"https://university-{n}.edu/study": n + 1 for n in range(6)}
+    )
+    summary = dict(events)["finding_alignment_summary"]
+    assert result.count("survey estimates") == 30
+    assert summary["cited_claims"] == 30
+    assert summary["candidate_findings_considered"] == 240
+    assert summary["eliminated_deterministically"] == 210
+    assert summary["semantic_pairs"] == 30
+    assert summary["verifier_batches"] == model.calls == 8
+    assert len([event for event, _ in events if event == "citation_verifier_batch_started"]) == 8
+    assert summary["claims_accepted_unchanged"] == summary["claims_removed"] == 0
+    assert summary["claims_qualified"] == 30

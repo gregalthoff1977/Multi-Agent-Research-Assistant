@@ -1228,6 +1228,7 @@ async def _criticize_one(
 
 async def critic_node(state: AgentState) -> dict:
     """Grade every task researched this round, concurrently."""
+    started = time.monotonic()
     sid = state["session_id"]
     cfg = get_run_config()
     pending = _pending(state, cfg.max_critic_loops)
@@ -1271,6 +1272,11 @@ async def critic_node(state: AgentState) -> dict:
             detail={"task_id": key, **verdict.model_dump()},
         )
 
+    logger.info(
+        "critic_round_summary",
+        tasks=len(pending),
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+    )
     return {
         "verdicts": verdicts,
         "retries": retries,
@@ -1322,6 +1328,7 @@ _VLABEL_RE = re.compile(r"^\*\*[^*]+\*\*\s*:")
 # rejected); literal number/percentage/year matching is deterministic and catches the
 # drift class the judge actually ruled NO on — invented figures and wrong magnitudes.
 _VNUM_RE = re.compile(r"\d+(?:\.\d+)?%?|\b\d{4}\b")
+_VERIFIER_BATCH_SIZE = 4
 
 
 def _claim_numbers(claim: str) -> list[str]:
@@ -1454,11 +1461,16 @@ async def _verifier_verdicts(
     the pass is measured by that judge, so the in-graph check must rule like it.
     """
     llm = get_llm("critic")
-    BATCH = 4
     verdicts: list[bool] = []
     cost = i_tot = o_tot = 0
-    for start in range(0, len(claim_evidence), BATCH):
-        batch = claim_evidence[start : start + BATCH]
+    for start in range(0, len(claim_evidence), _VERIFIER_BATCH_SIZE):
+        batch = claim_evidence[start : start + _VERIFIER_BATCH_SIZE]
+        logger.info(
+            "citation_verifier_batch_started",
+            batch_index=start // _VERIFIER_BATCH_SIZE + 1,
+            total_batches=(len(claim_evidence) + _VERIFIER_BATCH_SIZE - 1) // _VERIFIER_BATCH_SIZE,
+            pair_count=len(batch),
+        )
         blocks = [
             f"Claim {i}: {claim}\nEvidence {i}:\n{snippets}"
             for i, (claim, snippets) in enumerate(batch, start=1)
@@ -1485,18 +1497,22 @@ async def _verifier_verdicts(
 
 
 async def _verify_citation_fidelity(
-    sid: str, draft: str, sources: list[dict]
+    sid: str,
+    draft: str,
+    sources: list[dict],
+    verified_single_quotes: dict[str, str] | None = None,
 ) -> tuple[str, float, int, int]:
     """Check every cited claim against its own sources' snippets; strip markers the
     evidence does not back. Returns (draft, cost, tokens_in, tokens_out)."""
-    claims = _cited_claims(draft)
-    if not claims or not sources:
+    started = time.monotonic()
+    cited_claims = _cited_claims(draft)
+    if not cited_claims or not sources:
         return draft, 0.0, 0, 0
 
     by_index = {s.get("index"): s for s in sources if isinstance(s, dict)}
     claim_evidence: list[tuple[str, str]] = []
     mechanically_unsupported: set[str] = set()
-    for claim in claims:
+    for claim in cited_claims:
         if _VDEICTIC_RE.match(claim) or _VLABEL_RE.match(claim):
             # The judge rules on this sentence ALONE (anaphor without referent / label
             # no snippet contains), where it reads unsupported. Strip deterministically;
@@ -1548,6 +1564,18 @@ async def _verify_citation_fidelity(
     if verdicts:  # empty on verifier failure — nothing was ruled, nothing is stripped
         for (claim, snippets), ok in zip(todo, verdicts, strict=True):
             ok_by_claim[claim] = ok
+            # A successful ruling against ONE cited quotation is an exact claim →
+            # evidence lineage. Reuse it in finding alignment instead of paying for
+            # the identical semantic judgment again. Multi-quote URL citations do
+            # not identify which quote supported the claim.
+            cited = set(claims.extract_citations(claim))
+            if ok and verified_single_quotes is not None and len(cited) == 1:
+                source = by_index[next(iter(cited))]
+                quotes = source.get("snippets") or (
+                    [source["snippet"]] if source.get("snippet") else []
+                )
+                if len(quotes) == 1:
+                    verified_single_quotes[claim] = quotes[0]
             if not ok:
                 logger.warning(
                     "citation_verify_critic_rejected",
@@ -1558,7 +1586,7 @@ async def _verify_citation_fidelity(
 
     result = draft
     stripped = 0
-    for claim in claims:
+    for claim in cited_claims:
         if ok_by_claim.get(claim, claim not in mechanically_unsupported):
             continue
         stripped += 1
@@ -1573,8 +1601,16 @@ async def _verify_citation_fidelity(
             "agent_log",
             agent="synthesizer",
             message=f"Citation check: {stripped} claim(s) not supported by their snippets — markers removed",
-            detail={"stripped": stripped, "checked": len(claims)},
+            detail={"stripped": stripped, "checked": len(cited_claims)},
         )
+    logger.info(
+        "citation_fidelity_summary",
+        cited_claims=len(cited_claims),
+        semantic_pairs=len(todo),
+        verifier_batches=(len(todo) + _VERIFIER_BATCH_SIZE - 1) // _VERIFIER_BATCH_SIZE,
+        claims_removed=stripped,
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+    )
     return result, cost, i_tot, o_tot
 
 
@@ -1671,41 +1707,97 @@ def _number_sources(evidence: list[dict]) -> tuple[list[dict], dict[str, int]]:
     return sources, seen
 
 
+_ALIGNMENT_STOPWORDS = frozenset(
+    "a an and are as at be been by for from has have in into is it its of on or "
+    "that the their there these this to was were which with".split()
+)
+_MAX_QUOTATIONS_PER_CITATION = 2
+
+
+def _alignment_terms(value: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", value.lower())) - _ALIGNMENT_STOPWORDS
+
+
 async def _apply_finding_confidence(
-    draft: str, assessed: list[dict], seen: dict[str, int]
+    draft: str,
+    assessed: list[dict],
+    seen: dict[str, int],
+    verified_single_quotes: dict[str, str] | None = None,
 ) -> tuple[str, float, int, int]:
     """Bind each cited claim to the *quotation* it uses before applying judgment.
 
     A URL can contain several attested quotes with different roles and suitability.
-    A citation alone cannot select the right finding. The existing claim verifier is
-    reused to judge the exact claim against each eligible finding quotation. A model
-    failure or missing ruling here removes the claim (real runs only).
+    The citation is a URL, not a quote ID. Match its findings to that URL's own
+    evidence IDs/quotes, eliminate scope and number mismatches, then verify at most
+    the two closest distinct quotations per citation. Reuse an exact quotation
+    already verified by citation fidelity. No model ruling or no matching eligible
+    quotation removes the claim (real runs only).
     """
-    by_index: dict[int, list[dict]] = {}
-
-    def quotation(finding: dict) -> str:
-        # Legacy in-memory findings lacked this additive field. New findings keep
-        # their permissible statement and attested source wording separate.
-        return "\n".join(finding.get("source_quotes") or [finding["finding"]])
-
+    started = time.monotonic()
+    by_index: dict[int, list[tuple[dict, str, str]]] = {}
     for finding in assessed:
         if finding["status"] == "research_gap":
             continue
-        for url in finding["source_urls"]:
+        urls = finding["source_urls"]
+        quotes = finding.get("source_quotes") or [finding["finding"]] * len(urls)
+        ids = finding.get("evidence_ids") or [""] * len(urls)
+        for url, quote, eid in zip(urls, quotes, ids, strict=False):
+            if eid and eid != findings.evidence_id(url, quote):
+                continue  # broken evidence lineage cannot authorize a claim
             if url in seen:
-                by_index.setdefault(seen[url], []).append(finding)
-    claim_candidates = []
-    pairs = []
-    for claim in _cited_claims(draft):
-        # Only an assessment of this quotation can authorize this claim. Dedupe
-        # findings cited twice through the same source URL.
-        candidates = list(
-            {
-                id(f): f for n in claims.extract_citations(claim) for f in by_index.get(n, [])
-            }.values()
+                by_index.setdefault(seen[url], []).append((finding, quote, eid))
+    cited = _cited_claims(draft)
+    candidate_count = eliminated = 0
+    claim_candidates: list[tuple[str, list[tuple[dict, str, str]]]] = []
+    for claim in cited:
+        selected: list[tuple[dict, str, str]] = []
+        for n in dict.fromkeys(claims.extract_citations(claim)):
+            entries = by_index.get(n, [])
+            candidate_count += len(entries)
+            groups: dict[str, list[tuple[dict, str, str]]] = {}
+            for entry in entries:
+                finding, quote, _ = entry
+                if (
+                    _numbers_grounded(claim, quote)
+                    and _claim_scope_grounded(claim, quote)
+                    and not (
+                        finding["evidence_role"] == "cultural_signal"
+                        and _population_generalization(claim)
+                    )
+                ):
+                    groups.setdefault(quote, []).append(entry)
+            # Use distinctive overlapping words only to SELECT candidates, never
+            # as a verdict. No lexical connection is insufficient lineage: fail closed.
+            corpus_terms = {quote: _alignment_terms(quote) for quote in groups}
+            claim_terms = _alignment_terms(claim)
+            frequency = {
+                term: sum(term in terms for terms in corpus_terms.values()) for term in claim_terms
+            }
+            ranked = sorted(
+                (
+                    (sum(1 / frequency[t] for t in (claim_terms & terms)), quote)
+                    for quote, terms in corpus_terms.items()
+                    if claim_terms & terms
+                ),
+                key=lambda row: -row[0],
+            )
+            direct = (verified_single_quotes or {}).get(claim)
+            if direct in groups:
+                ranked = [(float("inf"), direct)] + [row for row in ranked if row[1] != direct]
+            for _, quote in ranked[:_MAX_QUOTATIONS_PER_CITATION]:
+                selected.extend(groups[quote])
+        claim_candidates.append((claim, selected))
+    eliminated = candidate_count - sum(len(entries) for _, entries in claim_candidates)
+    # Semantic judgments are keyed to an exact claim and quotation. If the same
+    # sentence recurs, or two task findings use one attested quote, ask the model once.
+    pairs = list(
+        dict.fromkeys(
+            (claim, quote)
+            for claim, candidates in claim_candidates
+            for _, quote, _ in candidates
+            if (verified_single_quotes or {}).get(claim) != quote
         )
-        claim_candidates.append((claim, candidates))
-        pairs.extend((claim, quotation(f)) for f in candidates)
+    )
     cost = 0.0
     tokens_in = tokens_out = 0
     try:
@@ -1716,46 +1808,44 @@ async def _apply_finding_confidence(
     except Exception as exc:  # noqa: BLE001
         logger.warning("finding_alignment_unavailable", error=str(exc)[:200])
         rulings = []
-    offset = 0
+    approved = dict(zip(pairs, rulings, strict=False))
+    removed = qualified = accepted = combined_calls = 0
     for claim, candidates in claim_candidates:
         matched = [
             f
-            for f, ok in zip(candidates, rulings[offset : offset + len(candidates)], strict=False)
-            if ok
-            and _numbers_grounded(claim, quotation(f))
-            and _claim_scope_grounded(claim, quotation(f))
+            for f, quote, _ in candidates
+            if (verified_single_quotes or {}).get(claim) == quote or approved.get((claim, quote))
         ]
-        offset += len(candidates)
         if not matched:
             # Some sentences legitimately combine two independently cited
             # observations. Check their quotations together, then apply the
             # weakest judgment of the set. Never treat the citation as a match.
             if (
-                len(candidates) > 1
+                len({quote for _, quote, _ in candidates}) > 1
                 and len(rulings) == len(pairs)
-                and not any(f["evidence_role"] == "measured_fact" for f in candidates)
+                and not any(f["evidence_role"] == "measured_fact" for f, _, _ in candidates)
             ):
                 try:
-                    combined, c, ti, to = await _verifier_verdicts(
-                        [(claim, "\n".join(quotation(f) for f in candidates))]
-                    )
+                    combined_quotes = "\n".join(dict.fromkeys(quote for _, quote, _ in candidates))
+                    combined, c, ti, to = await _verifier_verdicts([(claim, combined_quotes)])
+                    combined_calls += 1
                     cost += c
                     tokens_in += ti
                     tokens_out += to
                     if (
                         combined == [True]
-                        and _numbers_grounded(claim, "\n".join(quotation(f) for f in candidates))
-                        and _claim_scope_grounded(
-                            claim, "\n".join(quotation(f) for f in candidates)
-                        )
+                        and _numbers_grounded(claim, combined_quotes)
+                        and _claim_scope_grounded(claim, combined_quotes)
                     ):
-                        matched = candidates
+                        matched = [f for f, _, _ in candidates]
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("finding_alignment_unavailable", error=str(exc)[:200])
             if not matched:
                 draft = draft.replace(claim, "", 1)
+                removed += 1
                 continue
         if all(f["status"] == "established" for f in matched):
+            accepted += 1
             continue
         # A cultural occurrence, including a blog's description of its audience,
         # cannot authorize a claim about what that population generally does.
@@ -1763,6 +1853,7 @@ async def _apply_finding_confidence(
             f["evidence_role"] == "cultural_signal" for f in matched
         ) and _population_generalization(claim):
             draft = draft.replace(claim, "", 1)
+            removed += 1
             continue
         # Plain-language qualification is part of the final checked claim. The
         # source's limited claim is attributed rather than upgraded to a fact.
@@ -1792,6 +1883,20 @@ async def _apply_finding_confidence(
             else "The available evidence suggests that "
         )
         draft = draft.replace(claim, prefix + claim[0].lower() + claim[1:], 1)
+        qualified += 1
+    logger.info(
+        "finding_alignment_summary",
+        cited_claims=len(cited),
+        candidate_findings_considered=candidate_count,
+        eliminated_deterministically=eliminated,
+        semantic_pairs=len(pairs) + combined_calls,
+        verifier_batches=(len(pairs) + _VERIFIER_BATCH_SIZE - 1) // _VERIFIER_BATCH_SIZE
+        + combined_calls,
+        claims_removed=removed,
+        claims_qualified=qualified,
+        claims_accepted_unchanged=accepted,
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+    )
     return draft, cost, tokens_in, tokens_out
 
 
@@ -2039,12 +2144,17 @@ async def synthesizer_node(state: AgentState) -> dict:
     # the repair pass so a repair-introduced drift is caught too. Unsupported claims lose
     # their markers and carry a visible note rather than shipping a hollow citation.
     draft = _remove_uncited_claims(draft)
-    draft, vcost, vi, vo = await _verify_citation_fidelity(sid, draft, sources)
+    verified_single_quotes: dict[str, str] = {}
+    draft, vcost, vi, vo = await _verify_citation_fidelity(
+        sid, draft, sources, verified_single_quotes
+    )
     # An LLM can still phrase a cited, weakly supported observation as an established
     # fact. Mark its actual support level after citation verification, leaving the
     # original claim and marker intact for independent checking.
     if get_run_config().llm_mode != "fake":
-        draft, fcost, fi, fo = await _apply_finding_confidence(draft, assessed, seen)
+        draft, fcost, fi, fo = await _apply_finding_confidence(
+            draft, assessed, seen, verified_single_quotes
+        )
         cost += fcost
         i += fi
         o += fo

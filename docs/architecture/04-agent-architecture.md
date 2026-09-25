@@ -263,6 +263,15 @@ Versioned constants in `research_engine/prompts.py`, never inline in node code.
   publisher and preserve methodological uncertainty. Population generalizations
   cannot be backed solely by a cultural occurrence. Product, population, geographic,
   and superlative terms in a claim must also be present in the supporting quotation.
+  Citations identify a URL, not a particular quotation. Alignment follows each
+  finding's URL, quotation and evidence ID together, rejects numeric/scope/role
+  mismatches before model verification, and considers at most two lexically relevant
+  quotations per cited URL. Lexical similarity only narrows candidates; it never
+  authorizes a claim. If citation fidelity already verified the claim against the
+  URL's sole quotation, alignment reuses that exact ruling and applies its finding
+  assessment. Otherwise distinct claim/quotation pairs are verified once, in bounded
+  batches. Missing support still removes the claim. Critic, citation-fidelity and
+  finding-alignment logs record call counts and elapsed time to locate slow stages.
   A real run cannot finalize a draft that lacks completed finding judgment.
   Uncited factual sentences left by citation repair are removed. Findings retain
   the task's requested geography, population, time period, and claim type. Distinct
